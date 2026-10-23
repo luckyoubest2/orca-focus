@@ -1,0 +1,36 @@
+{
+  "name": "orca-focus",
+  "version": "0.1.0",
+  "description": "Orca Note focus timer: start a focus session from any block's handle menu, log start/end entries into today's journal, and manage all timers in a dedicated panel.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "install": "bash scripts/install.sh"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "valtio": "^1.13.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "react": "^18.2.0",
+    "rollup-plugin-external-globals": "^0.9.2",
+    "typescript": "^5.2.2",
+    "valtio": "^1.13.2",
+    "vite": "^5.2.0"
+  },
+  "license": "MIT",
+  "author": "luckyoubest2",
+  "keywords": [
+    "orca-note",
+    "orca",
+    "plugin",
+    "focus",
+    "timer",
+    "pomodoro",
+    "journal"
+  ]
+}
