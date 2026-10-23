@@ -54,7 +54,10 @@ export async function requestStartFocus(blockId: DbId): Promise<void> {
   openStartDialog(realId, blockTitle(block) || "未命名块")
 }
 
-/** Start dialog confirmed. Empty note => timer only, no journal entry. */
+/**
+ * Start dialog confirmed. A "start entry" is always written (the note is
+ * optional content, like the summary of the end entry).
+ */
 export async function confirmStartFocus(note: string): Promise<void> {
   const dialog = store.dialog
   if (dialog?.kind !== "start") return
@@ -66,15 +69,15 @@ export async function confirmStartFocus(note: string): Promise<void> {
   }
   const timer = createTimer(dialog.blockId, blockTitle(block) || dialog.title, note)
   if (getSettings().autoOpenPanel) openFocusPanel()
-  if (note.trim().length > 0) {
-    void writeStartEntry(timer)
-      .then((blockId) => {
-        if (blockId != null) setTimerStartLog(timer.id, blockId)
-      })
-      .catch((error) => {
-        console.warn("[orca-focus] start entry write failed", error)
-        orca.notify("warn", `「开始记录」写入日志失败：${errorText(error)}`, { title: "专注" })
-      })
+  try {
+    const blockId = await writeStartEntry(timer)
+    setTimerStartLog(timer.id, blockId)
+    console.log("[orca-focus] start entry written", blockId)
+  } catch (error) {
+    console.warn("[orca-focus] start entry write failed", error)
+    orca.notify("error", `「开始专注」记录写入日志失败：${errorText(error)}（计时已开始，请检查今天的日记是否存在）`, {
+      title: "专注",
+    })
   }
 }
 

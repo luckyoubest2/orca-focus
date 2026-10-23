@@ -164,18 +164,18 @@ async function insertEntry(opts: InsertEntryOptions): Promise<DbId> {
 }
 
 /**
- * Optional "start entry" written when the user typed an intent note.
- * Content is plain text; the target block lives in the tag's 目标 property.
+ * "Start entry": always written when a focus session starts (same mechanism as
+ * the end entry). Payload is `HH:mm 开始专注` plus the optional intent note,
+ * tagged with #专注日志 carrying 开始时间 / 目标.
  */
-export async function writeStartEntry(timer: FocusTimer): Promise<DbId | null> {
-  const note = timer.startNote.trim()
-  if (!note) return null
+export function writeStartEntry(timer: FocusTimer): Promise<DbId> {
   return enqueue(async () => {
     const tag = await ensureFocusTag()
     const target = await findOrCreateLogTarget(new Date(timer.createdAt))
     const alive = (await blockExists(timer.blockId)) ? timer.blockId : null
     const suffix = alive == null ? `（${timer.title}）` : ""
-    const text = `${formatClock(timer.createdAt)} 开始专注：${note}${suffix}`
+    const note = timer.startNote.trim()
+    const text = `${formatClock(timer.createdAt)} 开始专注${note ? `：${note}` : ""}${suffix}`
     return insertEntry({
       target,
       text,
