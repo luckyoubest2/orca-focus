@@ -23,8 +23,9 @@ import {
 import { invalidateTargetCache } from "./data/log"
 import { invalidateTagCache } from "./data/tag"
 import { findPanelByView, toggleFocusPanel } from "./lib/panels"
+import { disposeFocusIndicators, installFocusIndicators } from "./lib/blockIndicators"
 import { getSettings, registerSettings } from "./lib/settings"
-import { FOCUS_CSS, focusTagCss } from "./styles"
+import { BLOCK_INDICATOR_CSS, FOCUS_CSS, focusTagCss } from "./styles"
 import {
   closeDialog,
   disposeStore,
@@ -76,12 +77,12 @@ export async function load(pluginName: string): Promise<void> {
 
   await registerSettings(pluginName)
   try {
-    orca.themes.injectCSS(FOCUS_CSS + focusTagCss(getSettings().tagName), STYLE_ROLE)
+    orca.themes.injectCSS(FOCUS_CSS + BLOCK_INDICATOR_CSS + focusTagCss(getSettings().tagName), STYLE_ROLE)
   } catch (e) {
     console.warn("[orca-focus] injectCSS failed, falling back to <style>", e)
     const style = document.createElement("style")
     style.id = `${STYLE_ROLE}-styles`
-    style.textContent = FOCUS_CSS + focusTagCss(getSettings().tagName)
+    style.textContent = FOCUS_CSS + BLOCK_INDICATOR_CSS + focusTagCss(getSettings().tagName)
     document.head.appendChild(style)
   }
 
@@ -163,6 +164,7 @@ export async function load(pluginName: string): Promise<void> {
   }
 
   installUndoWatcher()
+  installFocusIndicators()
 
   if (init.crashPausedCount > 0 || init.quitPausedCount > 0) {
     const count = init.crashPausedCount + init.quitPausedCount
@@ -176,6 +178,7 @@ export async function load(pluginName: string): Promise<void> {
 
 export async function unload(): Promise<void> {
   uninstallUndoWatcher()
+  disposeFocusIndicators()
   closeDialog()
   pauseAllRunning()
   await flushState()

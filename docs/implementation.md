@@ -107,6 +107,16 @@ src/
 - 结束成功通知带「撤销」动作；命令面板「专注：撤销上一次结束专注」直接删结束条（编辑器命令，可再撤销）+ 恢复计时器；
 - 只有「刚结束的那一条」保留撤销记录（内存，一条）。
 
+### 5.3b 专注中的块前小时钟
+
+- Orca 没有「给已有块加装饰」的官方钩子，所以用渲染层标记：按 running 计时器的 `blockId` 找到 DOM 里的
+  `.orca-block[data-id="ID"]` 以及 `.orca-block[data-mirror-id="ID"]`（镜像块），加一个 `of-block-focusing` class；
+  不写入任何块内容。
+- CSS 伪元素在 `.orca-repr-main-content::before` 渲染 tabler `ti-clock-play`（\f549）并做呼吸动画。
+- React 重渲染可能重建 DOM 节点/覆盖 class：用 MutationObserver（120ms 节流）+ 1s 状态轮询重新补齐；
+  插件 unload 时移除全部标记。
+- 暂停/结束的计时器不显示。
+
 ### 5.4 退出自动暂停
 
 - 运行期每 5s 把 running 计时器的 `lastSeenAt` 写进 localStorage（只写本地，不写插件数据，避免 DB 抖动）；

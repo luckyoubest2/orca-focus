@@ -267,3 +267,34 @@ ${selector} {
 }
 `
 }
+
+/** Pulsing clock marker in front of blocks that have a running focus timer.
+ * The class is applied by lib/blockIndicators.ts (DOM-level marker, no note data). */
+export const BLOCK_INDICATOR_CSS = `
+.orca-block.of-block-focusing > .orca-repr > .orca-repr-main > .orca-repr-main-content::before {
+  content: "\\f549";
+  font-family: "tabler-icons";
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  speak: none;
+  -webkit-font-smoothing: antialiased;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  margin-right: var(--orca-spacing-sm, 4px);
+  translate: 0 .125rem;
+  font-size: calc(.25rem + var(--orca-block-line-height) / var(--orca-lineheight-md));
+  color: var(--orca-color-primary-5);
+  animation: of-focus-clock 1.8s ease-in-out infinite;
+  pointer-events: none;
+  user-select: none;
+}
+
+@keyframes of-focus-clock {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+`
