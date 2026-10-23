@@ -1,6 +1,7 @@
-import type { Block, DbId } from "../orca"
-import { blockExists, ensureBlocks } from "./blocks"
+import type { Block, BlockRefData, DbId } from "../orca"
+import { blockExists, ensureBlock, ensureBlocks } from "./blocks"
 import {
+  collectInlineRefTargetIds,
   dateKey,
   findBlockByNames,
   findLogSection,
@@ -12,11 +13,14 @@ import {
 import type { EditorApi } from "../lib/editor"
 import { runEditorCommand, runEditorGroup } from "../lib/editor"
 import { getSettings } from "../lib/settings"
-import { durationMinutes, formatClock, formatDurationHuman } from "../lib/util"
+import { formatClock } from "../lib/util"
 import type { FocusTimer } from "../types"
 import { elapsedMs } from "../store"
-import { ensureFocusTag, tagData } from "./tag"
+import { buildTagData, ensureFocusTag } from "./tag"
 import { blockTitle } from "./blocks"
+
+/** Default text written when the end dialog's summary is left empty. */
+export const DEFAULT_END_TEXT = "专注"
 
 const targetCache = new Map<string, DbId>()
 
@@ -31,107 +35,154 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   return run
 }
 
-function dayKeyFor(ts: number): string {
-  return dateKey(journalDate(new Date(ts)))
+async function resolveRepoAlias(name: string): Promise<Block | null> {
+  try {
+    const found = (await orca.invokeBackend("get-blockid-by-alias", name)) as any
+    if (found?.id != null) return await ensureBlock(found.id)
+  } catch (e) {
+    console.warn("[orca-focus] alias lookup failed", name, e)
+  }
+  return null
 }
 
+/**
+ * Locate the block that collects focus entries.
+ *
+ * 1. an existing block in today's journal matching the configured names/aliases
+ *    (handles headings written as `[DailyLog|Log]` / `[[DailyLog]]`),
+ * 2. otherwise a repo-wide alias lookup (e.g. a standalone DailyLog page),
+ * 3. otherwise create a plain block under the configured journal section.
+ */
 async function findOrCreateLogTarget(date: Date): Promise<Block> {
   const settings = getSettings()
-  const journal = await getJournalBlock(date)
+  const day = journalDate(date)
+  const key = dateKey(day)
+
+  const journal = await getJournalBlock(day)
   if (journal == null) {
     throw new Error("找不到这一天的日记块，请先在 Orca 中打开一次当天的日记。")
   }
 
-  const cachedId = targetCache.get(dateKey(journalDate(date)))
+  const cachedId = targetCache.get(key)
   if (cachedId != null) {
-    const cached = orca.state.blocks[cachedId]
+    const cached = await ensureBlock(cachedId)
     if (cached != null) return cached
-    await ensureBlocks([cachedId])
-    const rehydrated = orca.state.blocks[cachedId]
-    if (rehydrated != null) return rehydrated
-    targetCache.delete(dateKey(journalDate(date)))
+    targetCache.delete(key)
   }
 
   const blocks = await loadBlockTree(journal.id)
-  const all = blocks.length > 0 ? blocks : [journal]
+  // Headings may hold an inline reference (e.g. `[DailyLog|Log]`); load those
+  // targets so the heading can be matched through the referenced block's alias.
+  const refTargets = collectInlineRefTargetIds(blocks)
+  if (refTargets.length > 0) await ensureBlocks(refTargets.slice(0, 200))
 
-  // 1) An existing block called e.g. 工作日志 anywhere in the journal.
-  const existing = findBlockByNames(all, [settings.logBlockName])
-  if (existing) {
-    targetCache.set(dateKey(journalDate(date)), existing.id)
+  let existing = findBlockByNames(blocks.length > 0 ? blocks : [journal], settings.logBlockNames)
+  if (existing == null) {
+    for (const name of settings.logBlockNames) {
+      const aliasBlock = await resolveRepoAlias(name)
+      if (aliasBlock != null && aliasBlock.id !== journal.id) {
+        existing = aliasBlock
+        break
+      }
+    }
+  }
+  if (existing != null) {
+    targetCache.set(key, existing.id)
     return existing
   }
 
-  // 2) Create it under the configured section (DailyLog / 今日笔记 / ...), falling
-  //    back to the journal root. Deliberately a plain block, not an H2 heading,
-  //    so the today-dashboard's heading matching is not disturbed.
   const section = findLogSection(journal.id, settings.logSectionNames)
   const parent = section ?? journal
-  const parentBlock = orca.state.blocks[parent.id] ?? (await ensureBlockById(parent.id)) ?? parent
-
+  const parentBlock = orca.state.blocks[parent.id] ?? (await ensureBlock(parent.id)) ?? parent
+  const blockName = settings.logBlockNames[0] ?? "工作日志"
   const newId = await runEditorCommand(
     "core.editor.insertBlock",
     parentBlock,
     "lastChild",
-    [{ t: "t", v: settings.logBlockName }],
+    [{ t: "t", v: blockName }],
     { type: "text" },
   )
-  if (typeof newId !== "number") throw new Error("创建「" + settings.logBlockName + "」块失败。")
-  await ensureBlocks([newId])
-  targetCache.set(dateKey(journalDate(date)), newId)
-  const created = orca.state.blocks[newId]
-  if (created) return created
+  if (typeof newId !== "number") throw new Error(`创建「${blockName}」块失败。`)
+  const created = await ensureBlock(newId)
+  if (created != null) {
+    targetCache.set(key, newId)
+    return created
+  }
   return { id: newId } as Block
 }
 
-async function ensureBlockById(id: DbId): Promise<Block | null> {
-  await ensureBlocks([id])
-  return orca.state.blocks[id] ?? null
+interface InsertEntryOptions {
+  target: Block
+  text: string
+  /** Real source block; when null the entry only carries the cached title. */
+  sourceBlockId: DbId | null
+  tagName: string | null
+  tagDataFactory?: (targetRefId: DbId | null) => BlockRefData[] | null
 }
 
-/** Insert a plain text + inline reference block under the log target. */
-async function insertEntry(
-  target: Block,
-  text: string,
-  sourceBlockId: DbId | null,
-  extra: (editor: EditorApi, blockId: DbId) => Promise<void> = async () => {},
-): Promise<DbId> {
+/**
+ * Insert an entry under the log target. The source block is linked through the
+ * `#专注日志` tag's 目标 block-reference property (a RefType.RefData reference),
+ * never through inline content.
+ */
+async function insertEntry(opts: InsertEntryOptions): Promise<DbId> {
   let newBlockId: DbId | null = null
-  await runEditorGroup(async (editor) => {
+  await runEditorGroup(async (editor: EditorApi) => {
     const blockId = await editor.invokeCommand(
       "core.editor.insertBlock",
       null,
-      target,
+      opts.target,
       "lastChild",
-      [{ t: "t", v: text }],
+      [{ t: "t", v: opts.text }],
       { type: "text" },
     )
     if (typeof blockId !== "number") throw new Error("插入专注记录块失败。")
     newBlockId = blockId
-    if (sourceBlockId != null) {
-      const refId = await editor.invokeCommand("core.editor.createRef", null, blockId, sourceBlockId, 1)
-      await editor.invokeCommand("core.editor.setBlocksContent", null, [
-        { id: blockId, content: [{ t: "t", v: text }, { t: "r", v: refId }] },
-      ])
+
+    let targetRefId: DbId | null = null
+    if (opts.sourceBlockId != null) {
+      const refId = await editor.invokeCommand(
+        "core.editor.createRef",
+        null,
+        blockId,
+        opts.sourceBlockId,
+        3, // RefType.RefData: block-reference property value
+      )
+      if (typeof refId === "number") targetRefId = refId
     }
-    await extra(editor, blockId)
+
+    if (opts.tagName != null && opts.tagDataFactory != null) {
+      const data = opts.tagDataFactory(targetRefId)
+      if (data != null && data.length > 0) {
+        await editor.invokeCommand("core.editor.insertTag", null, blockId, opts.tagName, data)
+      }
+    }
   })
   if (newBlockId == null) throw new Error("插入专注记录块失败。")
   await ensureBlocks([newBlockId])
   return newBlockId
 }
 
-/** Optional "start entry" written only when the user typed an intent note. */
+/**
+ * Optional "start entry" written when the user typed an intent note.
+ * Content is plain text; the target block lives in the tag's 目标 property.
+ */
 export async function writeStartEntry(timer: FocusTimer): Promise<DbId | null> {
   const note = timer.startNote.trim()
   if (!note) return null
   return enqueue(async () => {
-    const date = new Date(timer.createdAt)
-    const target = await findOrCreateLogTarget(date)
-    const alive = await blockExists(timer.blockId)
-    const suffix = alive ? " " : `（${timer.title}） `
+    const tag = await ensureFocusTag()
+    const target = await findOrCreateLogTarget(new Date(timer.createdAt))
+    const alive = (await blockExists(timer.blockId)) ? timer.blockId : null
+    const suffix = alive == null ? `（${timer.title}）` : ""
     const text = `${formatClock(timer.createdAt)} 开始专注：${note}${suffix}`
-    return insertEntry(target, text, alive ? timer.blockId : null)
+    return insertEntry({
+      target,
+      text,
+      sourceBlockId: alive,
+      tagName: tag.name,
+      tagDataFactory: (targetRefId) => buildTagData({ startMs: timer.createdAt, targetRefId }),
+    })
   })
 }
 
@@ -142,8 +193,8 @@ export interface EndEntryResult {
 
 /**
  * Write the "end entry":
- *   HH:mm–HH:mm 专注 28 分钟｜summary <inline ref to source block>
- * and tag it with the focus tag carrying start/end/duration data.
+ *   HH:mm {summary or default text}
+ * tagged with #专注日志, carrying 开始时间 / 结束时间 / 目标 as tag properties.
  */
 export function writeEndEntry(
   timer: FocusTimer,
@@ -154,20 +205,18 @@ export function writeEndEntry(
     const tag = await ensureFocusTag()
     const elapsed = elapsedMs(timer, endMs)
     const target = await findOrCreateLogTarget(new Date(endMs))
-    const alive = await blockExists(timer.blockId)
-    const suffix = alive ? " " : `（${timer.title}） `
-    const text = `${formatClock(timer.createdAt)}–${formatClock(endMs)} 专注 ${formatDurationHuman(
-      elapsed,
-    )}${summary.trim() ? `｜${summary.trim()}` : ""}${suffix}`
+    const alive = (await blockExists(timer.blockId)) ? timer.blockId : null
+    const suffix = alive == null ? `（${timer.title}）` : ""
+    const body = summary.trim() || DEFAULT_END_TEXT
+    const text = `${formatClock(endMs)} ${body}${suffix}`
 
-    const blockId = await insertEntry(target, text, alive ? timer.blockId : null, async (editor, entryId) => {
-      await editor.invokeCommand(
-        "core.editor.insertTag",
-        null,
-        entryId,
-        tag.name,
-        tagData(timer.createdAt, endMs, durationMinutes(elapsed)),
-      )
+    const blockId = await insertEntry({
+      target,
+      text,
+      sourceBlockId: alive,
+      tagName: tag.name,
+      tagDataFactory: (targetRefId) =>
+        buildTagData({ startMs: timer.createdAt, endMs, targetRefId }),
     })
     return { blockId, elapsedMs: elapsed }
   })
@@ -196,5 +245,5 @@ export function invalidateTargetCache(): void {
 
 export function matchesLogBlock(block: Block): boolean {
   const settings = getSettings()
-  return matchesNames(block, [settings.logBlockName])
+  return matchesNames(block, settings.logBlockNames)
 }

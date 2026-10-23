@@ -1,11 +1,13 @@
-import type { Block, DbId } from "../orca"
+import type { Block, BlockRefData, DbId } from "../orca"
 import { ensureBlocks } from "../data/blocks"
 import { runEditorCommand, runEditorGroup } from "../lib/editor"
 import { getSettings } from "../lib/settings"
 
 export const TAG_PROP_START = "开始时间"
 export const TAG_PROP_END = "结束时间"
-export const TAG_PROP_DURATION = "时长"
+export const TAG_PROP_TARGET = "目标"
+/** Removed in v0.2; kept only so an existing tag block can be migrated. */
+export const LEGACY_TAG_PROPS = ["时长"]
 
 let cachedName: string | null = null
 let cachedId: DbId | null = null
@@ -23,10 +25,22 @@ async function findTagId(name: string): Promise<DbId | null> {
 async function ensureTagProperties(tagId: DbId): Promise<void> {
   const block = orca.state.blocks[tagId]
   const existingNames = new Set((block?.properties ?? []).map((prop) => prop.name))
+
+  // Migration: older versions added a 时长 property that is no longer wanted.
+  const legacy = LEGACY_TAG_PROPS.filter((name) => existingNames.has(name))
+  if (legacy.length > 0) {
+    try {
+      await runEditorCommand("core.editor.deleteProperties", [tagId], legacy)
+      for (const name of legacy) existingNames.delete(name)
+    } catch (e) {
+      console.warn("[orca-focus] failed to remove legacy tag properties", e)
+    }
+  }
+
   const wanted = [
     { name: TAG_PROP_START, type: 5, typeArgs: { subType: "datetime" } },
     { name: TAG_PROP_END, type: 5, typeArgs: { subType: "datetime" } },
-    { name: TAG_PROP_DURATION, type: 3 },
+    { name: TAG_PROP_TARGET, type: 2, typeArgs: {} },
   ]
   const missing = wanted.filter((prop) => !existingNames.has(prop.name))
   if (missing.length === 0) return
@@ -39,7 +53,7 @@ async function ensureTagProperties(tagId: DbId): Promise<void> {
 
 /**
  * Ensure the configured focus tag exists (creating an alias block when needed)
- * and expose the tag properties used to record start/end/duration.
+ * and expose the tag properties used to record the time range and target block.
  */
 export async function ensureFocusTag(): Promise<{ id: DbId | null; name: string }> {
   const name = getSettings().tagName
@@ -102,16 +116,25 @@ export function getCachedTag(): { id: DbId | null; name: string } | null {
   return { id: cachedId, name: cachedName }
 }
 
-export function tagData(
-  startMs: number,
-  endMs: number,
-  minutes: number,
-): { name: string; type: number; value: any }[] {
-  return [
-    { name: TAG_PROP_START, type: 5, value: new Date(startMs) },
-    { name: TAG_PROP_END, type: 5, value: new Date(endMs) },
-    { name: TAG_PROP_DURATION, type: 3, value: minutes },
-  ]
+export interface TagDataOptions {
+  /** Session start time (epoch ms). */
+  startMs: number
+  /** Session end time; omitted for "start" entries. */
+  endMs?: number
+  /** RefType.RefData ref id pointing at the focus target block. */
+  targetRefId: DbId | null
+}
+
+/** Tag instance data: start/end timestamps + a block-reference property for the target. */
+export function buildTagData(opts: TagDataOptions): BlockRefData[] {
+  const data: BlockRefData[] = [{ name: TAG_PROP_START, type: 5, value: new Date(opts.startMs) }]
+  if (opts.endMs != null) {
+    data.push({ name: TAG_PROP_END, type: 5, value: new Date(opts.endMs) })
+  }
+  if (opts.targetRefId != null) {
+    data.push({ name: TAG_PROP_TARGET, type: 2, value: [opts.targetRefId] })
+  }
+  return data
 }
 
 export function tagBlockForDisplay(): Block | null {

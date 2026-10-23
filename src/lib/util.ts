@@ -66,3 +66,31 @@ export function parseNameList(raw: string | undefined | null, fallback: string[]
     .filter((s) => s.length > 0)
   return names.length > 0 ? names : fallback
 }
+
+/**
+ * Parse a comma/newline separated list of block names that may be written as
+ * plain names, aliases, or Orca link/reference syntax:
+ *   DailyLog / [[DailyLog]] / [[DailyLog|Log]] / [DailyLog|Log]
+ */
+export function parseReferenceNameList(raw: string | undefined | null, fallback: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const add = (value: string) => {
+    const name = value.replace(/^\[+/, "").replace(/\]+$/, "").trim()
+    if (!name || seen.has(name.toLowerCase())) return
+    seen.add(name.toLowerCase())
+    out.push(name)
+  }
+  for (const piece of (raw ?? "").split(/[,，\n]/)) {
+    const trimmed = piece.trim()
+    if (!trimmed) continue
+    const link = trimmed.match(/^\[\[?([^\]|]+)(?:\|([^\]]+))?\]\]?$/)
+    if (link) {
+      add(link[1])
+      if (link[2]) add(link[2])
+      continue
+    }
+    add(trimmed)
+  }
+  return out.length > 0 ? out : fallback
+}

@@ -1,11 +1,11 @@
 import { getPluginKey } from "../config"
-import { parseNameList } from "./util"
+import { parseReferenceNameList } from "./util"
 
 export interface FocusSettings {
   /** Tag applied to finished focus entries, e.g. 专注日志. */
   tagName: string
-  /** Name of the block under today's journal that collects focus entries. */
-  logBlockName: string
+  /** Names/aliases of the block that collects focus entries. */
+  logBlockNames: string[]
   /** Names/aliases of the journal section used to auto-create the log block. */
   logSectionNames: string[]
   /** Open the timer panel after starting a new timer. */
@@ -16,9 +16,11 @@ export interface FocusSettings {
 
 const DEFAULT_LOG_SECTIONS = ["DailyLog", "今日笔记", "日志"]
 
+const DEFAULT_LOG_BLOCK_NAMES = ["工作日志"]
+
 export const DEFAULT_SETTINGS: FocusSettings = {
   tagName: "专注日志",
-  logBlockName: "工作日志",
+  logBlockNames: DEFAULT_LOG_BLOCK_NAMES,
   logSectionNames: DEFAULT_LOG_SECTIONS,
   autoOpenPanel: false,
   autoPauseOnExit: true,
@@ -30,11 +32,11 @@ export function getSettings(): FocusSettings {
   return {
     tagName:
       typeof raw.tagName === "string" && raw.tagName.trim() ? raw.tagName.trim() : DEFAULT_SETTINGS.tagName,
-    logBlockName:
-      typeof raw.logBlockName === "string" && raw.logBlockName.trim()
-        ? raw.logBlockName.trim()
-        : DEFAULT_SETTINGS.logBlockName,
-    logSectionNames: parseNameList(raw.logSectionNames, DEFAULT_LOG_SECTIONS),
+    logBlockNames: parseReferenceNameList(
+      typeof raw.logBlockName === "string" ? raw.logBlockName : "",
+      DEFAULT_LOG_BLOCK_NAMES,
+    ),
+    logSectionNames: parseReferenceNameList(raw.logSectionNames, DEFAULT_LOG_SECTIONS),
     autoOpenPanel: raw.autoOpenPanel === true,
     autoPauseOnExit: raw.autoPauseOnExit !== false,
   }
@@ -50,9 +52,10 @@ export async function registerSettings(pluginName: string): Promise<void> {
     },
     logBlockName: {
       label: "日志块名称",
-      description: "今日日记里用来收集专注记录的那个块；找不到时会自动创建。",
+      description:
+        "收集专注记录的块/分区名称，可填块名或别名，支持 [[DailyLog]]、[DailyLog|Log] 这类写法（逗号分隔多个候选）。优先在今天的日记里找，找不到再按仓库别名找，最后自动创建。",
       type: "string",
-      defaultValue: DEFAULT_SETTINGS.logBlockName,
+      defaultValue: DEFAULT_LOG_BLOCK_NAMES.join(","),
     },
     logSectionNames: {
       label: "日志分区名称",

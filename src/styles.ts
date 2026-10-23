@@ -251,3 +251,19 @@ export const FOCUS_CSS = `
 .of-chip-active { color: var(--orca-color-primary-5); }
 .of-chip-paused { font-size: var(--orca-fontsize-xs); color: var(--orca-color-text-2); }
 `
+
+/** Extra styling for the focus tag: its property data (incl. the target ref) stays
+ * behind the small caret badge instead of showing in the entry content. */
+export function focusTagCss(tagName: string): string {
+  const safe = (tagName || "专注日志").replace(/["\\]/g, "")
+  const selector = `.orca-tag[data-name="${safe.toLowerCase()}"]`
+  return `
+${selector} .orca-tag-data-icon {
+  opacity: .6;
+  font-size: .8em;
+}
+${selector} {
+  --orca-tag-focus-accent: var(--orca-color-primary-5);
+}
+`
+}

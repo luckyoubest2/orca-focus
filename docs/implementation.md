@@ -5,8 +5,8 @@
 在虎鲸笔记（Orca Note）里做「专注计时」：
 
 1. 不再给块打任务标签，而是把入口挂到**块左侧小点（block handle）的右键菜单**，所有块都能发起专注；
-2. 开始专注可填「这次做什么」：填了写一条开始记录到日志并引用回本块，不填不写；
-3. 结束可填总结：不填也记一条默认记录，打标签、标开始/结束时间、关联回本块；
+2. 开始专注可填「这次做什么」：填了写一条开始记录到日志，不填不写；
+3. 结束可填总结：不填也记一条默认记录，打标签、标开始/结束时间，目标块以**属性引用**关联回本块；
 4. 有专门的面板管理所有计时器，允许**多个计时器并行**；
 5. 退出应用时计时器**自动暂停**；
 6. 「结束」可以**撤销**（按错结束能恢复计时）。
@@ -18,9 +18,9 @@
 | 块小点右键菜单 | 官方 `orca.blockMenuCommands.registerBlockMenuCommand`。**注意**：非 `core.*` 命令统一渲染在菜单的「插件命令」子菜单里，不是顶层 |
 | 自定义面板 | 官方 `orca.panels.registerPanel`；`PanelView` 用 `panelRenderers[view]` 渲染，组件收到 `panelId` + viewArgs |
 | 开始/结束弹窗 | 全局挂一个 React root（`window.createRoot`，Orca 暴露），用 `orca.components.ModalOverlay` + `CompositionTextArea` + `Button` |
-| 写开始条/结束条 | 编辑器命令 `core.editor.insertBlock` / `createRef` / `setBlocksContent` / `insertTag`；全部放进 `editor.invokeGroup` 成为**一步可撤销**操作 |
-| 标签 + 起止时间 | 建 `#专注日志` 标签块（insertBlock + createAlias），`setProperties` 定义 `开始时间/结束时间/时长` 三个标签属性；实例数据用 `insertTag(..., data)` 写入 |
-| 关联回源块 | `createRef(from=日志块, to=源块, RefType.Inline)` 拿到 refId，日志内容里写 `{t:"r", v:refId}` 内联引用；源块 backrefs 自动出现记录 |
+| 写开始条/结束条 | 编辑器命令 `core.editor.insertBlock` / `createRef` / `insertTag`；全部放进 `editor.invokeGroup` 成为**一步可撤销**操作 |
+| 标签 + 起止时间 | 建 `#专注日志` 标签块（insertBlock + createAlias），`setProperties` 定义 `开始时间/结束时间/目标` 三个标签属性；实例数据用 `insertTag(..., data)` 写入 |
+| 关联回源块 | **不再写内联引用**：`createRef(from=日志块, to=源块, RefType.RefData)` 拿 refId，作为标签数据 `{name:"目标", type:BlockRefs, value:[refId]}` 写进 `#专注日志` 属性（Orca 标签数据按钮里可查看/跳转） |
 | 退出自动暂停 | **Orca 退出时不会调用插件 `unload()`**（源码里 unload 只在禁用/更新/移除插件时调用）。用 `window.addEventListener("beforeunload")` 同步写 localStorage + 运行期 5s 心跳；下次启动读取时把 running 视为异常退出，按心跳时间暂停 |
 | 撤销结束 | 结束写日志的命令组进编辑器撤销栈；`registerAfterCommand("core.editor.undo")` 里检测结束条是否被撤销、是则恢复计时器；另有通知「撤销」入口和命令面板命令兜底 |
 
@@ -80,16 +80,25 @@ src/
 4. 找不到 → 在配置的分区（默认 `DailyLog/今日笔记/日志`）下 `insertBlock` 一个**普通块**「工作日志」——故意不建 H2，避免今日看板（orca-daytime）多出一个「未匹配分区」；
 5. 开始条/结束条作为它的 `lastChild` 追加，按时间顺序排列。
 
-### 5.2 一条记录长什么样
+### 5.2 一条记录长什么样（v0.2）
 
 ```
-09:12 开始专注：整理方案 ⟦源块⟧
-09:12–09:40 专注 28 分钟｜写完初稿 ⟦源块⟧ #专注日志
+09:12 开始专注：整理方案            #专注日志（开始时间、目标）
+09:40 写完初稿                      #专注日志（开始时间、结束时间、目标）
 ```
 
-- `⟦源块⟧` = 内联引用（ref fragment），点击跳回源块；
-- `#专注日志` 标签实例数据：开始时间 / 结束时间 / 时长（分钟）；
-- 标签块上定义同名属性 schema（datetime ×2 + number），Orca 原生渲染成属性 chip。
+- 结束条只保留**一个时间戳**（结束时刻），不显示时长；
+- 正文里没有任何引用/内联块引用；
+- 目标块通过 `#专注日志` 标签的 `目标` 属性关联（RefType.RefData 引用 + BlockRefs 类型标签数据），平时藏在标签后面的小角标里；
+- 标签 schema：`开始时间` / `结束时间`（datetime）+ `目标`（BlockRefs）；v0.1 的 `时长` 属性在下次写入时自动删除。
+
+### 5.2.1 目标块识别
+
+1. 取今天的日记块（日期统一 `journalDate()` 成 UTC 零点后传给 backend）；
+2. 拉整棵树，并对树里的内联引用目标补加载，让 `[DailyLog|Log]` 这种「标题是别名引用」的分区能被别名匹配上；
+3. 配置的日志块名称支持纯文本/别名/`[[DailyLog]]`/`[DailyLog|Log]` 写法；
+4. 今日日记里找不到 → 按仓库别名（`get-blockid-by-alias`）找，比如独立的 DailyLog 页面；
+5. 都没有 → 在配置的日志分区下创建一个普通块。
 
 ### 5.3 撤销
 
@@ -114,17 +123,15 @@ Orca 的编辑器命令必须经由某个**编辑器面板**执行才能进撤�
 ## 6. 验证
 
 - `npx tsc --noEmit`、`npm run build` 通过；
-- 用 esbuild 把 `actions/store/log` 打成一个测试 bundle，在 Node 里用 mock 的 `orca` 运行时跑通：
-  1. 开始（带备注）→ 自动创建「工作日志」→ 开始条 + 内联引用；
-  2. 结束（带总结）→ 结束条 + `#专注日志` + 起止/时长标签数据 + 标签 schema；
-  3. 撤销结束 → 删结束条 + 恢复 running 计时器；
-  4. 暂停/继续；
-  5. 多计时器并行（同块不重复、不同块可并行）；
-  6. `beforeunload` → 全部暂停 + localStorage 写入 `quitAt` / `pausedByQuit`；
+- 用 esbuild 把 `actions/store/log/tag` 打成一个测试 bundle，在 Node 里用 mock 的 `orca` 运行时跑通（模拟用户真实结构：日记分区标题是 `[DailyLog|Log]`、设置写成 `[[DailyLog]]`、旧标签块带 `时长` 属性）：
+  1. 开始（带备注）→ 记录写到 `[DailyLog|Log]` 分区下，不再创建「工作日志」块；正文无内联引用；标签数据含开始时间 + 目标 RefData 引用；
+  2. 结束（带总结）→ 结束条只有一个时间戳、无时长；标签数据含开始/结束/目标；标签 schema 自动迁移（删 `时长`、加 `目标`）；
+  3. 空总结 → 默认文案「专注」；
+  4. 撤销结束 → 删结束条 + 恢复 running 计时器；
+  5. 多计时器并行；
+  6. `beforeunload` → 全部暂停 + localStorage `quitAt` / `pausedByQuit`；
   7. 重启恢复 → 暂停计时器 & 提示文案；
-  8. 异常退出（手动伪造心跳）→ 按心跳时间恢复并暂停；
-  9. autoPauseOnExit=false → 退出保持 running、重启仍 running；
-  10. 模拟原生 Cmd+Z 删掉结束条 → after-hook 恢复计时器。
+  8. 模拟原生 Cmd+Z 删掉结束条 → after-hook 恢复计时器。
 - 真机 UI（块菜单子项、弹窗、自定义面板、头栏徽标、CSS）需要重启 Orca 后验证，见 README「已知限制」。
 
 ## 7. 已知风险 / 待真机确认

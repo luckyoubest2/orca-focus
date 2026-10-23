@@ -37,9 +37,13 @@ export function flattenBlocks(node: unknown, acc: Block[] = []): Block[] {
   return acc
 }
 
+/**
+ * Orca's journal backend expects a UTC-midnight journal date. Normalize here so
+ * callers can pass "now" or any timestamp safely.
+ */
 export async function getJournalBlock(date: Date): Promise<Block | null> {
   try {
-    const journal = (await orca.invokeBackend("get-journal-block", date)) as Block | null
+    const journal = (await orca.invokeBackend("get-journal-block", journalDate(date))) as Block | null
     if (journal?.id == null) return null
     orca.state.blocks[journal.id] = journal
     return journal
@@ -65,25 +69,78 @@ export async function loadBlockTree(rootId: DbId): Promise<Block[]> {
   return blocks
 }
 
-function normalize(text: string): string {
+function normalizeName(text: string | null | undefined): string {
   return (text ?? "").trim().toLowerCase()
 }
 
-/** Test whether a block's text or aliases match one of the configured names. */
-export function matchesNames(block: Block, names: string[]): boolean {
-  const wanted = names.map(normalize).filter((n) => n.length > 0)
-  if (wanted.length === 0) return false
-  const text = normalize(typeof block.text === "string" ? block.text : "")
-  const aliases = (block.aliases ?? []).map(normalize)
-  return wanted.some((name) => text === name || aliases.includes(name))
+function addCandidate(out: Set<string>, value: string | null | undefined): void {
+  const name = normalizeName(value?.replace(/^\[+/, "").replace(/\]+$/, ""))
+  if (name) out.add(name)
 }
 
-/** Find the first matching block among the loaded journal tree (BFS order). */
+/**
+ * Extract possible names from a piece of text. Handles plain text plus Orca's
+ * reference/alias syntaxes used in headings, e.g. `[DailyLog|Log]`,
+ * `[[DailyLog]]`, `[[DailyLog|Log]]`.
+ */
+export function textNameCandidates(text: string | null | undefined): Set<string> {
+  const out = new Set<string>()
+  const raw = text ?? ""
+  addCandidate(out, raw)
+  for (const match of raw.matchAll(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g)) {
+    addCandidate(out, match[1])
+    addCandidate(out, match[2])
+  }
+  for (const match of raw.matchAll(/\[([^\]|]+)(?:\|([^\]]+))?\]/g)) {
+    addCandidate(out, match[1])
+    addCandidate(out, match[2])
+  }
+  for (const piece of raw.split(/[,，|]/)) addCandidate(out, piece)
+  return out
+}
+
+/** All names a block can be matched by: aliases, text (incl. ref syntax), inline-ref targets. */
+export function blockNameCandidates(block: Block): Set<string> {
+  const out = new Set<string>()
+  for (const alias of block.aliases ?? []) addCandidate(out, alias)
+  for (const name of textNameCandidates(typeof block.text === "string" ? block.text : "")) out.add(name)
+  for (const frag of block.content ?? []) {
+    if (frag?.t !== "r") continue
+    const ref = (block.refs ?? []).find((item) => item.id === frag.v)
+    if (ref == null) continue
+    const target = orca.state.blocks[ref.to]
+    if (target == null) continue
+    for (const alias of target.aliases ?? []) addCandidate(out, alias)
+    for (const name of textNameCandidates(target.text)) out.add(name)
+  }
+  return out
+}
+
+/** Test whether a block matches one of the configured names/aliases. */
+export function matchesNames(block: Block, names: string[]): boolean {
+  const wanted = names.map(normalizeName).filter((name) => name.length > 0)
+  if (wanted.length === 0) return false
+  const candidates = blockNameCandidates(block)
+  return wanted.some((name) => candidates.has(name))
+}
+
+/** Find the first matching block among the loaded journal tree. */
 export function findBlockByNames(blocks: Block[], names: string[]): Block | null {
   for (const block of blocks) {
     if (matchesNames(block, names)) return block
   }
   return null
+}
+
+/** Collect inline-ref targets of a block list so alias-based headings can be resolved. */
+export function collectInlineRefTargetIds(blocks: Block[]): DbId[] {
+  const ids = new Set<DbId>()
+  for (const block of blocks) {
+    for (const ref of block.refs ?? []) {
+      if (ref.type === 1 && typeof ref.to === "number") ids.add(ref.to)
+    }
+  }
+  return Array.from(ids)
 }
 
 /** H2/journal section candidate used as the parent for the auto-created log block. */
