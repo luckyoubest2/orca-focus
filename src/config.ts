@@ -13,6 +13,7 @@ export const CMD_OPEN_PANEL = "orca-focus.openPanel"
 export const CMD_START_CURRENT = "orca-focus.startCurrent"
 export const CMD_TOGGLE_CURRENT = "orca-focus.toggleCurrent"
 export const CMD_END_CURRENT = "orca-focus.endCurrent"
+export const CMD_NOTE_CURRENT = "orca-focus.noteCurrent"
 export const CMD_UNDO_END = "orca-focus.undoLastEnd"
 
 export const HEADBAR_ID = "orca-focus.headbar"

@@ -11,7 +11,7 @@ import {
   resumeTimer,
   useFocusStore,
 } from "../store"
-import { requestStartFocus } from "../actions"
+import { requestFocusNoteForBlock, requestStartFocus } from "../actions"
 
 const { MenuText } = orca.components as any
 
@@ -64,6 +64,15 @@ function FocusBlockMenu({ blockId, close }: { blockId: DbId; close: () => void }
 
   if (timer != null) {
     items.push(
+      React.createElement(MenuText, {
+        key: "note",
+        title: "插入专注备注…",
+        preIcon: "ti ti-note",
+        onClick: () => {
+          close()
+          requestFocusNoteForBlock(realId)
+        },
+      }),
       React.createElement(MenuText, {
         key: "end",
         title: "结束专注…",

@@ -117,17 +117,23 @@ export function getCachedTag(): { id: DbId | null; name: string } | null {
 }
 
 export interface TagDataOptions {
-  /** Session start time (epoch ms). */
-  startMs: number
-  /** Session end time; omitted for "start" entries. */
+  /** Session start time (epoch ms); omitted for mid-session notes. */
+  startMs?: number
+  /** Session end time (epoch ms); omitted for start entries / mid-session notes. */
   endMs?: number
   /** RefType.RefData ref id pointing at the focus target block. */
   targetRefId: DbId | null
 }
 
-/** Tag instance data: start/end timestamps + a block-reference property for the target. */
+/**
+ * Tag instance data. Start entries carry 开始时间 + 目标, end entries carry
+ * 开始时间 + 结束时间 + 目标, mid-session notes carry only 目标.
+ */
 export function buildTagData(opts: TagDataOptions): BlockRefData[] {
-  const data: BlockRefData[] = [{ name: TAG_PROP_START, type: 5, value: new Date(opts.startMs) }]
+  const data: BlockRefData[] = []
+  if (opts.startMs != null) {
+    data.push({ name: TAG_PROP_START, type: 5, value: new Date(opts.startMs) })
+  }
   if (opts.endMs != null) {
     data.push({ name: TAG_PROP_END, type: 5, value: new Date(opts.endMs) })
   }

@@ -19,9 +19,6 @@ import { elapsedMs } from "../store"
 import { buildTagData, ensureFocusTag } from "./tag"
 import { blockTitle } from "./blocks"
 
-/** Default text written when the end dialog's summary is left empty. */
-export const DEFAULT_END_TEXT = "专注"
-
 const targetCache = new Map<string, DbId>()
 
 /** Serialize journal writes so concurrent start/end actions cannot race. */
@@ -118,12 +115,18 @@ interface InsertEntryOptions {
   sourceBlockId: DbId | null
   tagName: string | null
   tagDataFactory?: (targetRefId: DbId | null) => BlockRefData[] | null
+  /**
+   * When true (and the source block still exists) append an inline reference to
+   * the focus target after the text. Used for "no note" entries so the record
+   * still shows what it was about; user-written notes stay clean.
+   */
+  inlineRef?: boolean
 }
 
 /**
- * Insert an entry under the log target. The source block is linked through the
- * `#专注日志` tag's 目标 block-reference property (a RefType.RefData reference),
- * never through inline content.
+ * Insert an entry under the log target. The source block is always linked
+ * through the `#专注日志` tag's 目标 block-reference property; the optional
+ * inline reference is only used as the default content of "no note" entries.
  */
 async function insertEntry(opts: InsertEntryOptions): Promise<DbId> {
   let newBlockId: DbId | null = null
@@ -151,6 +154,21 @@ async function insertEntry(opts: InsertEntryOptions): Promise<DbId> {
       if (typeof refId === "number") targetRefId = refId
     }
 
+    if (opts.inlineRef === true && opts.sourceBlockId != null) {
+      const inlineRefId = await editor.invokeCommand(
+        "core.editor.createRef",
+        null,
+        blockId,
+        opts.sourceBlockId,
+        1, // RefType.Inline
+      )
+      if (typeof inlineRefId === "number") {
+        await editor.invokeCommand("core.editor.setBlocksContent", null, [
+          { id: blockId, content: [{ t: "t", v: opts.text }, { t: "r", v: inlineRefId }] },
+        ])
+      }
+    }
+
     if (opts.tagName != null && opts.tagDataFactory != null) {
       const data = opts.tagDataFactory(targetRefId)
       if (data != null && data.length > 0) {
@@ -164,23 +182,30 @@ async function insertEntry(opts: InsertEntryOptions): Promise<DbId> {
 }
 
 /**
- * "Start entry": always written when a focus session starts (same mechanism as
- * the end entry). Payload is `HH:mm 开始专注` plus the optional intent note,
- * tagged with #专注日志 carrying 开始时间 / 目标.
+ * "Start entry": always written when a focus session starts.
+ * - note filled:   `HH:mm {note}`
+ * - note empty:    `HH:mm 开始专注：` + inline reference to the focus target
+ * Tagged with #专注日志 (开始时间 + 目标; 结束时间 left empty).
  */
 export function writeStartEntry(timer: FocusTimer): Promise<DbId> {
   return enqueue(async () => {
     const tag = await ensureFocusTag()
     const target = await findOrCreateLogTarget(new Date(timer.createdAt))
     const alive = (await blockExists(timer.blockId)) ? timer.blockId : null
-    const suffix = alive == null ? `（${timer.title}）` : ""
     const note = timer.startNote.trim()
-    const text = `${formatClock(timer.createdAt)} 开始专注${note ? `：${note}` : ""}${suffix}`
+    const inline = note.length === 0 && alive != null
+    const suffix = alive == null ? `（${timer.title}）` : ""
+    const text = inline
+      ? `${formatClock(timer.createdAt)} 开始专注：`
+      : note.length > 0
+        ? `${formatClock(timer.createdAt)} ${note}${suffix}`
+        : `${formatClock(timer.createdAt)} 开始专注${suffix}`
     return insertEntry({
       target,
       text,
       sourceBlockId: alive,
       tagName: tag.name,
+      inlineRef: inline,
       tagDataFactory: (targetRefId) => buildTagData({ startMs: timer.createdAt, targetRefId }),
     })
   })
@@ -192,9 +217,10 @@ export interface EndEntryResult {
 }
 
 /**
- * Write the "end entry":
- *   HH:mm {summary or default text}
- * tagged with #专注日志, carrying 开始时间 / 结束时间 / 目标 as tag properties.
+ * "End entry":
+ * - summary filled: `HH:mm {summary}`
+ * - summary empty:  `HH:mm 结束专注：` + inline reference to the focus target
+ * Tagged with #专注日志 (开始时间 + 结束时间 + 目标).
  */
 export function writeEndEntry(
   timer: FocusTimer,
@@ -206,19 +232,46 @@ export function writeEndEntry(
     const elapsed = elapsedMs(timer, endMs)
     const target = await findOrCreateLogTarget(new Date(endMs))
     const alive = (await blockExists(timer.blockId)) ? timer.blockId : null
+    const summaryText = summary.trim()
+    const inline = summaryText.length === 0 && alive != null
     const suffix = alive == null ? `（${timer.title}）` : ""
-    const body = summary.trim() || DEFAULT_END_TEXT
-    const text = `${formatClock(endMs)} ${body}${suffix}`
+    const text = inline
+      ? `${formatClock(endMs)} 结束专注：`
+      : summaryText.length > 0
+        ? `${formatClock(endMs)} ${summaryText}${suffix}`
+        : `${formatClock(endMs)} 结束专注${suffix}`
 
     const blockId = await insertEntry({
       target,
       text,
       sourceBlockId: alive,
       tagName: tag.name,
+      inlineRef: inline,
       tagDataFactory: (targetRefId) =>
         buildTagData({ startMs: timer.createdAt, endMs, targetRefId }),
     })
     return { blockId, elapsedMs: elapsed }
+  })
+}
+
+/**
+ * Mid-session note: `HH:mm {note}` tagged with #专注日志 carrying only the 目标
+ * block-reference (开始时间/结束时间 intentionally empty).
+ */
+export function writeNoteEntry(timer: FocusTimer, nowMs: number, note: string): Promise<DbId> {
+  return enqueue(async () => {
+    const tag = await ensureFocusTag()
+    const target = await findOrCreateLogTarget(new Date(nowMs))
+    const alive = (await blockExists(timer.blockId)) ? timer.blockId : null
+    const suffix = alive == null ? `（${timer.title}）` : ""
+    const text = `${formatClock(nowMs)} ${note.trim()}${suffix}`
+    return insertEntry({
+      target,
+      text,
+      sourceBlockId: alive,
+      tagName: tag.name,
+      tagDataFactory: (targetRefId) => buildTagData({ targetRefId }),
+    })
   })
 }
 

@@ -10,6 +10,7 @@ import {
   resumeTimer,
   discardTimer,
   elapsedMs,
+  openNoteDialog,
   setNotice,
   useFocusStore,
 } from "../store"
@@ -67,6 +68,14 @@ function TimerCard({ timerId }: { timerId: string }) {
           onClick={() => openEndDialog(timer.id)}
         >
           <i className="ti ti-player-stop" />
+        </Button>
+        <Button
+          variant="plain"
+          className="of-icon-btn"
+          title="插入专注备注"
+          onClick={() => openNoteDialog(timer.id, timer.title)}
+        >
+          <i className="ti ti-note" />
         </Button>
         <Button variant="plain" className="of-icon-btn" title="跳到源块" onClick={jump}>
           <i className="ti ti-arrow-up-right" />

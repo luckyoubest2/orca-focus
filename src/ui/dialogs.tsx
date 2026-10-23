@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react"
-import { confirmEndFocus, confirmStartFocus } from "../actions"
+import { confirmEndFocus, confirmFocusNote, confirmStartFocus } from "../actions"
 import { closeDialog, elapsedMs, getTimer, useFocusStore } from "../store"
 import { formatDurationHuman } from "../lib/util"
 
@@ -57,7 +57,7 @@ function StartDialog({ blockId, title }: { blockId: number; title: string }) {
           }}
         />
         <div className="of-dialog-hint">
-          开始时会往日志写一条「开始专注」记录；这里填的内容会跟在后面。
+          开始时会写一条日志记录；填了内容就用这段文字，留空则自动放上目标块的引用。
         </div>
         <div className="of-dialog-actions">
           <Button variant="outline" onClick={() => closeDialog()}>
@@ -126,11 +126,62 @@ function EndDialog({ timerId }: { timerId: string }) {
   )
 }
 
+function NoteDialog({ timerId, title }: { timerId: string; title: string }) {
+  const inputRef = useAutoFocus<HTMLTextAreaElement>()
+
+  const submit = () => {
+    void confirmFocusNote(textareaValue(inputRef))
+  }
+
+  return (
+    <ModalOverlay
+      visible={true}
+      canClose={true}
+      onClose={() => closeDialog()}
+      className="of-modal"
+      blurred={false}
+    >
+      <div className="of-dialog">
+        <div className="of-dialog-title">
+          <i className="ti ti-note" /> 插入专注备注
+        </div>
+        <div className="of-dialog-subtitle" title={title}>
+          {title}
+        </div>
+        <CompositionTextArea
+          ref={inputRef}
+          className="of-textarea"
+          rows={4}
+          placeholder="记录一下此刻的进展 / 想法（按当前时间写进日志）"
+          onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault()
+              submit()
+            }
+          }}
+        />
+        <div className="of-dialog-hint">
+          会写成「HH:mm 备注内容」并打上 #专注日志；只带目标引用，不带起止时间。
+        </div>
+        <div className="of-dialog-actions">
+          <Button variant="outline" onClick={() => closeDialog()}>
+            取消
+          </Button>
+          <Button variant="solid" onClick={submit}>
+            插入备注
+          </Button>
+        </div>
+      </div>
+    </ModalOverlay>
+  )
+}
+
 /** Mounted once into a dedicated DOM host; renders whichever dialog is pending. */
 export function DialogHost() {
   const snapshot = useFocusStore()
   const dialog = snapshot.dialog
   if (dialog == null) return null
   if (dialog.kind === "start") return <StartDialog blockId={dialog.blockId} title={dialog.title} />
+  if (dialog.kind === "note") return <NoteDialog timerId={dialog.timerId} title={dialog.title} />
   return <EndDialog timerId={dialog.timerId} />
 }

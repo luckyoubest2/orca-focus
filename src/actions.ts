@@ -1,6 +1,6 @@
 import type { DbId } from "./orca"
 import { blockExists, blockTitle, ensureBlock, getMirrorId } from "./data/blocks"
-import { deleteEntry, writeEndEntry, writeStartEntry } from "./data/log"
+import { deleteEntry, writeEndEntry, writeNoteEntry, writeStartEntry } from "./data/log"
 import { openFocusPanel, editorPanelId } from "./lib/panels"
 import { formatDurationHuman } from "./lib/util"
 import { getSettings } from "./lib/settings"
@@ -12,6 +12,7 @@ import {
   getTimer,
   getTimerForBlock,
   openEndDialog,
+  openNoteDialog,
   openStartDialog,
   pauseTimer,
   peekEndUndo,
@@ -78,6 +79,52 @@ export async function confirmStartFocus(note: string): Promise<void> {
     orca.notify("error", `「开始专注」记录写入日志失败：${errorText(error)}（计时已开始，请检查今天的日记是否存在）`, {
       title: "专注",
     })
+  }
+}
+
+/** Open the mid-session note dialog for a block that currently has a timer. */
+export function requestFocusNoteForBlock(blockId: DbId): void {
+  const realId = getMirrorId(blockId)
+  const timer = getTimerForBlock(realId)
+  if (timer == null) {
+    orca.notify("info", "这个块当前没有专注计时。", { title: "专注" })
+    return
+  }
+  openNoteDialog(timer.id, timer.title)
+}
+
+/** Open the mid-session note dialog from the timer panel. */
+export function requestFocusNoteForTimer(timerId: string): void {
+  const timer = getTimer(timerId)
+  if (timer == null) {
+    orca.notify("info", "这个计时器已经不存在了。", { title: "专注" })
+    return
+  }
+  openNoteDialog(timer.id, timer.title)
+}
+
+/** Mid-session note confirmed: write `HH:mm {note}` tagged with 目标 only. */
+export async function confirmFocusNote(note: string): Promise<void> {
+  const dialog = store.dialog
+  if (dialog?.kind !== "note") return
+  closeDialog()
+  const timer = getTimer(dialog.timerId)
+  if (timer == null) {
+    orca.notify("info", "这个计时器已经不存在了。", { title: "专注" })
+    return
+  }
+  const text = note.trim()
+  if (!text) {
+    orca.notify("info", "没有输入内容，未写入专注备注。", { title: "专注" })
+    return
+  }
+  try {
+    const blockId = await writeNoteEntry(timer, Date.now(), text)
+    console.log("[orca-focus] note entry written", blockId)
+    orca.notify("success", "已插入专注备注", { title: "专注" })
+  } catch (error) {
+    console.warn("[orca-focus] note entry write failed", error)
+    notifyError(`专注备注写入失败：${errorText(error)}`)
   }
 }
 

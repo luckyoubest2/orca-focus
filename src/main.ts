@@ -2,6 +2,7 @@ import React from "react"
 import {
   BLOCK_MENU_ID,
   CMD_END_CURRENT,
+  CMD_NOTE_CURRENT,
   CMD_OPEN_PANEL,
   CMD_START_CURRENT,
   CMD_TOGGLE_CURRENT,
@@ -15,6 +16,7 @@ import {
 import {
   installUndoWatcher,
   requestEndFocusForBlock,
+  requestFocusNoteForBlock,
   requestStartFocus,
   toggleFocusForBlock,
   undoLastEnd,
@@ -149,6 +151,18 @@ export async function load(pluginName: string): Promise<void> {
     { label: "专注：结束专注（当前块）" },
   )
 
+  orca.commands.registerEditorCommand(
+    CMD_NOTE_CURRENT,
+    async (ctx: any) => {
+      const blockId = cursorBlockId(ctx as EditorCommandContext)
+      if (blockId != null) requestFocusNoteForBlock(blockId)
+      else orca.notify("info", "请先把光标放到一个块里。", { title: "专注" })
+      return null
+    },
+    () => {},
+    { label: "专注：插入专注备注（当前块）" },
+  )
+
   orca.commands.registerCommand(
     CMD_UNDO_END,
     async () => {
@@ -202,6 +216,7 @@ export async function unload(): Promise<void> {
   orca.commands.unregisterEditorCommand(CMD_START_CURRENT)
   orca.commands.unregisterEditorCommand(CMD_TOGGLE_CURRENT)
   orca.commands.unregisterEditorCommand(CMD_END_CURRENT)
+  orca.commands.unregisterEditorCommand(CMD_NOTE_CURRENT)
   orca.commands.unregisterCommand(CMD_UNDO_END)
   orca.panels.unregisterPanel(PANEL_VIEW)
   try {

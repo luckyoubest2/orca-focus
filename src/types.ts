@@ -38,6 +38,7 @@ export interface PersistedState {
 export type DialogState =
   | { kind: "start"; blockId: DbId; title: string }
   | { kind: "end"; timerId: string }
+  | { kind: "note"; timerId: string; title: string }
 
 /** Snapshot kept after ending a timer so the action can be undone. */
 export interface EndUndoRecord {

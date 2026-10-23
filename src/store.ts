@@ -409,6 +409,10 @@ export function openEndDialog(timerId: string): void {
   store.dialog = { kind: "end", timerId }
 }
 
+export function openNoteDialog(timerId: string, title: string): void {
+  store.dialog = { kind: "note", timerId, title }
+}
+
 export function closeDialog(): void {
   store.dialog = null
 }
