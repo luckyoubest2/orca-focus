@@ -19,7 +19,6 @@ interface StoreState {
   dialog: DialogState | null
   lastEndUndo: EndUndoRecord | null
   notice: string | null
-  ready: boolean
 }
 
 export const store: StoreState = Valtio.proxy({
@@ -29,7 +28,6 @@ export const store: StoreState = Valtio.proxy({
   dialog: null,
   lastEndUndo: null,
   notice: null,
-  ready: false,
 }) as StoreState
 
 let tickHandle: ReturnType<typeof setInterval> | null = null
@@ -117,7 +115,6 @@ function normalizeTimer(raw: any): FocusTimer | null {
     accumulatedMs: Math.max(0, accumulatedMs),
     createdAt,
     startNote: typeof raw.startNote === "string" ? raw.startNote : "",
-    startLogBlockId: typeof raw.startLogBlockId === "number" ? raw.startLogBlockId : null,
     actionBlockId: typeof raw.actionBlockId === "number" ? raw.actionBlockId : null,
     lastSeenAt: Number(raw.lastSeenAt) || Date.now(),
     pausedByQuit: raw.pausedByQuit === true,
@@ -134,14 +131,13 @@ function pickNewer(
 }
 
 export interface InitResult {
-  restoredCount: number
   crashPausedCount: number
   quitPausedCount: number
 }
 
 /** Read persisted timers, recover from a quit/crash and start the clocks. */
 export async function initStore(): Promise<InitResult> {
-  if (initialized) return { restoredCount: 0, crashPausedCount: 0, quitPausedCount: 0 }
+  if (initialized) return { crashPausedCount: 0, quitPausedCount: 0 }
   initialized = true
 
   const local = readLocal()
@@ -157,8 +153,9 @@ export async function initStore(): Promise<InitResult> {
     if (!timer) continue
     if (timer.status === "running") {
       if (settings.autoPauseOnExit) {
-        // The app was closed (or crashed) while the timer was running: pause it
-        // at the last heartbeat so the offline time is not charged to the session.
+        // Only a crash/kill leaves status "running" on disk (a normal quit pauses
+        // in beforeunload): pause at the last heartbeat so offline time is not
+        // charged to the session.
         const lastSeen = Math.max(timer.lastSeenAt || 0, timer.startedAt || 0)
         timer.accumulatedMs = timer.accumulatedMs + Math.max(0, lastSeen - timer.startedAt)
         timer.startedAt = 0
@@ -177,19 +174,17 @@ export async function initStore(): Promise<InitResult> {
 
   store.timers = timers
   store.now = Date.now()
-  store.ready = true
   saveState()
 
   startClocks()
   attachQuitHandler()
 
-  const restoredCount = timers.length
   if (crashPausedCount > 0) {
     store.notice = `上次退出时自动暂停了 ${crashPausedCount} 个专注计时。`
   } else if (quitPausedCount > 0) {
     store.notice = `上次退出时自动暂停了 ${quitPausedCount} 个专注计时，可在面板里继续。`
   }
-  return { restoredCount, crashPausedCount, quitPausedCount }
+  return { crashPausedCount, quitPausedCount }
 }
 
 export function startClocks(): void {
@@ -228,11 +223,11 @@ function attachQuitHandler(): void {
         if (timer.status === "running") timer.lastSeenAt = now
       }
     }
-    writeLocal({ ...serialize(), quitAt: now })
+    writeLocal(serialize())
     // Best-effort durable copy; the synchronous localStorage write above is the
     // one guaranteed to land before the window goes away.
     void orca.plugins
-      .setData(getPluginKey(), DATA_KEY_TIMERS, JSON.stringify({ ...serialize(), quitAt: now }))
+      .setData(getPluginKey(), DATA_KEY_TIMERS, JSON.stringify(serialize()))
       .catch(() => {})
   }
   window.addEventListener("beforeunload", quitHandler)
@@ -259,7 +254,6 @@ export function disposeStore(): void {
   }
   // Allow a later re-enable of the plugin to re-read persisted timers.
   initialized = false
-  store.ready = false
 }
 
 function schedulePluginSave(): void {
@@ -306,7 +300,6 @@ export function createTimer(blockId: number, title: string, startNote: string): 
     accumulatedMs: 0,
     createdAt: now,
     startNote: startNote.trim(),
-    startLogBlockId: null,
     actionBlockId: null,
     lastSeenAt: now,
   }
@@ -401,19 +394,6 @@ export function setTimerActionBlock(id: string, blockId: number | null): void {
   if (!timer) return
   timer.actionBlockId = blockId
   saveState()
-}
-
-export function setTimerStartLog(id: string, blockId: number | null): void {
-  const timer = getTimer(id)
-  if (!timer) return
-  timer.startLogBlockId = blockId
-  saveState()
-}
-
-export function setTimerTitle(id: string, title: string): void {
-  const timer = getTimer(id)
-  if (!timer || !title) return
-  timer.title = title
 }
 
 /** Make sure a timer has a session id (old persisted timers may not). */

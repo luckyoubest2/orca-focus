@@ -271,9 +271,6 @@ ${selector} .orca-tag-data-icon {
   opacity: .6;
   font-size: .8em;
 }
-${selector} {
-  --orca-tag-focus-accent: var(--orca-color-primary-5);
-}
 `
 }
 
@@ -446,11 +443,11 @@ export const HISTORY_CSS = `
 @keyframes of-spin { to { transform: rotate(360deg); } }
 `
 
-/** Real child-block action row (approach B: no floating overlay). */
+/** Real child-block action row rendered under the focused block. */
 export const ACTION_BLOCK_CSS = `
 /* Make the action child block read as one line attached to the focused block.
    --of-focus-row-height / --of-focus-row-font are set by ui/ActionBlock.tsx from
-   the focused block's own line height so headings get a proportionally bigger bar. */
+   the focused block's own line height so headings get a bigger action row. */
 .of-repr-focus-actions { margin: 1px 0 3px; }
 
 .of-repr-focus-actions .orca-repr-main {
@@ -514,8 +511,6 @@ export const ACTION_BLOCK_CSS = `
   background: var(--orca-color-border);
   margin: 0 calc(var(--of-focus-row-font, 14px) * 0.25);
 }
-
-.of-focus-action-hint { color: var(--orca-color-text-2); font-size: calc(var(--of-focus-row-font, 14px) * 0.85); }
 
 .of-focus-action-btn {
   border: none;

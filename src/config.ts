@@ -1,8 +1,8 @@
 // Plugin-wide constants and the runtime plugin key.
 //
-// Orca derives the plugin name from its folder name, so every identifier is
-// prefixed with "orca-focus." and the actual plugin key is provided at load
-// time via `load(pluginName)`.
+// Orca derives the plugin name from its folder name, so registry ids are
+// prefixed with "orca-focus."; the actual plugin key is passed in at load time
+// via `load(pluginName)` and used for settings/plugin data.
 
 export const PLUGIN_ID = "orca-focus"
 
@@ -43,5 +43,5 @@ export function getPluginKey(): string {
 }
 
 export function localStorageKey(repo: string | undefined | null): string {
-  return `orca-focus:${repo ?? "default"}:timers`
+  return `${PLUGIN_ID}:${repo ?? "default"}:timers`
 }

@@ -1,4 +1,3 @@
-import React from "react"
 import { formatElapsedClock } from "../lib/util"
 import { toggleFocusPanel } from "../lib/panels"
 import { elapsedMs, useFocusStore } from "../store"
@@ -16,7 +15,7 @@ export default function FocusChip() {
     <Button
       variant="plain"
       className={`of-chip ${first ? "of-chip-active" : ""}`}
-      title={first ? "专注中，点击打开计时面板" : "专注计时面板"}
+      title={first ? "专注中，点击打开/关闭计时面板" : "点击打开专注计时面板"}
       onClick={() => toggleFocusPanel()}
     >
       <i

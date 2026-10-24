@@ -39,7 +39,6 @@ import {
   flushState,
   initStore,
   pauseAllRunning,
-  store,
 } from "./store"
 import FocusActionBlockRenderer from "./ui/ActionBlock"
 import { DialogHost } from "./ui/dialogs"
@@ -83,19 +82,21 @@ export async function load(pluginName: string): Promise<void> {
   setPluginKey(pluginName)
 
   await registerSettings(pluginName)
+  const pluginCss =
+    FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + ACTION_BLOCK_CSS + focusTagCss(getSettings().tagName)
   try {
-    orca.themes.injectCSS(FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + ACTION_BLOCK_CSS + focusTagCss(getSettings().tagName), STYLE_ROLE)
+    orca.themes.injectCSS(pluginCss, STYLE_ROLE)
   } catch (e) {
     console.warn("[orca-focus] injectCSS failed, falling back to <style>", e)
     const style = document.createElement("style")
     style.id = `${STYLE_ROLE}-styles`
-    style.textContent = FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + ACTION_BLOCK_CSS + focusTagCss(getSettings().tagName)
+    style.textContent = pluginCss
     document.head.appendChild(style)
   }
 
   mountDialogs()
 
-  const init = await initStore()
+  await initStore()
 
   try {
     orca.renderers.registerBlock(ACTION_BLOCK_TYPE, false, FocusActionBlockRenderer)
@@ -158,7 +159,7 @@ export async function load(pluginName: string): Promise<void> {
       return null
     },
     () => {},
-    { label: "专注：暂停/继续（当前块）" },
+    { label: "专注：开始 / 暂停 / 继续（当前块）" },
   )
 
   orca.commands.registerEditorCommand(
@@ -191,11 +192,11 @@ export async function load(pluginName: string): Promise<void> {
       const count = await cleanupOrphanActionBlocks()
       orca.notify(
         count > 0 ? "success" : "info",
-        count > 0 ? `已清理 ${count} 个残留的专注按钮块。` : "没有发现残留的专注按钮块。",
+        count > 0 ? `已清理 ${count} 个残留的专注操作块。` : "没有发现残留的专注操作块。",
         { title: "专注" },
       )
     },
-    "专注：清理残留的专注按钮块",
+    "专注：清理残留的专注操作块",
   )
 
   orca.commands.registerCommand(
@@ -216,15 +217,6 @@ export async function load(pluginName: string): Promise<void> {
   installActionBlockBinding()
   startActionBlockRepair()
   installFocusIndicators()
-
-  if (init.crashPausedCount > 0 || init.quitPausedCount > 0) {
-    const count = init.crashPausedCount + init.quitPausedCount
-    orca.notify("info", `上次退出时自动暂停了 ${count} 个专注计时，可在计时面板继续。`, {
-      title: "专注",
-    })
-  }
-
-  console.log("[orca-focus] loaded", { restoredTimers: store.timers.length })
 }
 
 export async function unload(): Promise<void> {
@@ -294,5 +286,4 @@ export async function unload(): Promise<void> {
   }
   invalidateTagCache()
   invalidateTargetCache()
-  console.log("[orca-focus] unloaded")
 }

@@ -2,11 +2,7 @@ import type { Block, DbId } from "../orca"
 import { blockTitle } from "./blocks"
 import { getSettings } from "../lib/settings"
 import { store } from "../store"
-
-export const TAG_PROP_SESSION = "专注ID"
-export const TAG_PROP_START = "开始时间"
-export const TAG_PROP_END = "结束时间"
-export const TAG_PROP_TARGET = "目标"
+import { TAG_PROP_END, TAG_PROP_SESSION, TAG_PROP_START, TAG_PROP_TARGET } from "./tag"
 
 export interface HistoryEntry {
   blockId: DbId
@@ -35,12 +31,11 @@ export interface FocusHistory {
   totalMs: number
   todayCount: number
   totalCount: number
-  loadedAt: number
   error?: string
 }
 
 export function emptyHistory(): FocusHistory {
-  return { sessions: [], todayMs: 0, totalMs: 0, todayCount: 0, totalCount: 0, loadedAt: Date.now() }
+  return { sessions: [], todayMs: 0, totalMs: 0, todayCount: 0, totalCount: 0 }
 }
 
 function toMs(value: any): number | null {
@@ -126,7 +121,7 @@ export async function loadFocusHistory(): Promise<FocusHistory> {
     raw = Array.isArray(result) ? result : []
   } catch (e) {
     console.warn("[orca-focus] history: get-blocks-with-tags failed", e)
-    return { ...emptyHistory(), error: "查询专注日志失败" }
+    return { ...emptyHistory(), error: "查询专注记录失败" }
   }
 
   const list = raw.filter(
@@ -240,9 +235,9 @@ export async function loadFocusHistory(): Promise<FocusHistory> {
     session.entries.sort((a, b) => (a.startMs ?? a.createdMs) - (b.startMs ?? b.createdMs))
     const firstEntry = session.entries[0]
     if (session.startMs == null && firstEntry != null) {
-      session.startMs = session.entries.reduce<number | null>(
-        (min, entry) => (entry.createdMs != null && (min == null || entry.createdMs < min) ? entry.createdMs : min),
-        null,
+      session.startMs = session.entries.reduce<number>(
+        (min, entry) => (entry.createdMs < min ? entry.createdMs : min),
+        firstEntry.createdMs,
       )
     }
     session.running = runningSessionIds.has(session.id)
@@ -277,6 +272,5 @@ export async function loadFocusHistory(): Promise<FocusHistory> {
     totalMs,
     todayCount,
     totalCount: sessions.length,
-    loadedAt: Date.now(),
   }
 }

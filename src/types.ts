@@ -21,8 +21,6 @@ export interface FocusTimer {
   createdAt: number
   /** Optional intent typed when the timer was started. */
   startNote: string
-  /** Journal block id of the optional "start entry", when a start note was written. */
-  startLogBlockId: DbId | null
   /** Custom action block inserted under the focused block while the timer is active. */
   actionBlockId: DbId | null
   /** Epoch ms of the last persistence write while running (crash recovery). */
@@ -35,8 +33,6 @@ export interface FocusTimer {
 export interface PersistedState {
   timers: FocusTimer[]
   savedAt: number
-  /** Set right before the window unloads, used to explain auto-pauses on next launch. */
-  quitAt?: number
 }
 
 export type DialogState =
@@ -52,6 +48,4 @@ export interface EndUndoRecord {
   wasRunning: boolean
   endBlockId: DbId | null
   at: number
-  /** Panel whose editor holds the undo step for the end-entry writes. */
-  editorPanelId: string
 }

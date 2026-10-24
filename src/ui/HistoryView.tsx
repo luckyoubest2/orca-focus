@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import type { DbId } from "../orca"
 import { ensureBlocks } from "../data/blocks"
 import { loadFocusHistory } from "../data/history"
 import type { FocusHistory, HistorySession } from "../data/history"
+import { getSettings } from "../lib/settings"
 import { formatClock, formatDurationHuman } from "../lib/util"
 import { useFocusStore } from "../store"
 
@@ -177,7 +178,7 @@ export default function FocusHistoryView() {
             <div className="of-empty-text">开始一次专注后，记录会自动汇总到这里。</div>
           </div>
         )}
-        {hasData && loading && history == null && <div className="of-history-loading">加载中…</div>}
+        {loading && history == null && <div className="of-history-loading">加载中…</div>}
         {groups.map((group) => (
           <div className="of-history-day" key={group.key}>
             <div className="of-history-day-head">
@@ -193,7 +194,7 @@ export default function FocusHistoryView() {
           </div>
         ))}
       </div>
-      <div className="of-panel-footer">记录汇总自笔记里的 #专注日志 标签（含中间备注），不额外存一份账。</div>
+      <div className="of-panel-footer">记录汇总自笔记里的 #{getSettings().tagName} 标签（含中间备注），不额外存一份账。</div>
     </div>
   )
 }

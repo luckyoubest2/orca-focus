@@ -1,11 +1,10 @@
 import { store } from "../store"
 
 /**
- * The plugin API has no "decorate an existing block" hook, so the running-focus
- * clock marker is applied by adding a CSS class to the rendered block DOM
- * (`.orca-block[data-id]` / `.orca-block[data-mirror-id]`) and letting CSS draw
- * a small pulsing clock in front of the block content. Nothing is written into
- * the note.
+ * Orca has no hook to decorate an existing block, so the running-focus clock
+ * marker is drawn by a CSS class on the rendered block DOM
+ * (`.orca-block[data-id="…"]` / `.orca-block[data-mirror-id="…"]`). Nothing is
+ * written into the note.
  *
  * React re-renders can recreate block elements, so the class is re-applied by a
  * throttled MutationObserver and a 1s state poll.

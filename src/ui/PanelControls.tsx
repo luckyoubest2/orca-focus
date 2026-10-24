@@ -1,5 +1,3 @@
-import React from "react"
-
 const { ContextMenu, Menu, MenuText, Button } = orca.components as any
 
 function panelDragDataType(): string {
@@ -12,10 +10,9 @@ function panelDragDataType(): string {
 }
 
 /**
- * Replacement for Orca's internal `PanelDragHandle` (not exposed to plugins):
- * a draggable "⋮" button that opens the native panel menu (split / maximize /
- * wide / lock / recents / close). Custom panels must render this themselves,
- * otherwise the panel has no menu and no close entry.
+ * Orca's internal `PanelDragHandle` is not exposed to plugins, so custom panels
+ * render this equivalent draggable "⋮" button themselves: it opens the native
+ * panel menu (split / maximize / wide / lock / recents / close).
  */
 export function PanelMenuButton({ panelId }: { panelId: string }) {
   const closePanel = () => {

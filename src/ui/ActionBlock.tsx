@@ -1,7 +1,6 @@
 import React from "react"
 import { formatElapsedClock } from "../lib/util"
 import { withActionBlockMutationAllowed } from "../lib/actionBlockGuard"
-import { isCanonicalActionBlock } from "../lib/actionBlockBinding"
 import { runEditorCommand } from "../lib/editor"
 import {
   elapsedMs,
@@ -46,15 +45,24 @@ function ActiveRow({
   sourceBlockId?: number
 }) {
   const snapshot = useFocusStore()
+  // Keep the row live: the store's 1s tick also re-renders it, so a row that was
+  // rendered before the timer got its actionBlockId corrects itself.
+  void snapshot.now
   const timer = snapshot.timers.find(
     (candidate) =>
       (typeof timerId === "string" && candidate.id === timerId) ||
       (typeof sourceBlockId === "number" && candidate.blockId === sourceBlockId),
   )
   if (timer == null) return <StaleRow blockId={blockId} reason="ended" />
-  // Pasted/copied action blocks are inert: only the canonical block attached by
-  // the plugin may control the timer.
-  if (!isCanonicalActionBlock(timer.id, blockId)) return <StaleRow blockId={blockId} reason="duplicate" />
+  // This block can render for the first time before ensureActionBlock records its
+  // id on the timer. Read actionBlockId through the snapshot so the row re-renders
+  // once it is assigned; until then trust the timerId stored in the block's _repr.
+  // (Pasted/copied blocks keep an old timerId, so they never pass this check.)
+  const canonical =
+    timer.actionBlockId != null
+      ? timer.actionBlockId === blockId
+      : typeof timerId === "string" && timerId === timer.id
+  if (!canonical) return <StaleRow blockId={blockId} reason="duplicate" />
   const running = timer.status === "running"
   return (
     <span className="of-focus-action-row" contentEditable={false}>
@@ -90,10 +98,9 @@ function StaleRow({ blockId, reason }: { blockId: number; reason: "ended" | "dup
 }
 
 /**
- * Custom child-block renderer for the floating-free action row.
- * The block is a real note block (inserted as the focused block's first child
- * while a timer is active), so it follows the document layout instead of using
- * a fixed overlay.
+ * Custom child-block renderer for the focus action row: a real note block
+ * inserted as the focused block's first child while a timer is active, so it
+ * follows the document layout.
  */
 export default function FocusActionBlockRenderer(props: any) {
   const {

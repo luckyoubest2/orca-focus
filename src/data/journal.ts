@@ -1,5 +1,4 @@
 import type { Block, DbId } from "../orca"
-import { getRepr } from "./blocks"
 
 /** Today's journal date: local Y/M/D encoded as UTC midnight (Orca convention). */
 export function journalDate(base: Date = new Date()): Date {
@@ -152,8 +151,4 @@ export function findLogSection(journalId: DbId, sectionNames: string[]): Block |
     if (child && matchesNames(child, sectionNames)) return child
   }
   return null
-}
-
-export function isJournalBlock(block: Block | undefined | null): boolean {
-  return getRepr(block)?.type === "journal"
 }

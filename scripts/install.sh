@@ -21,4 +21,4 @@ cp "$ROOT/LICENSE" "$TARGET/"
 
 echo "Installed to: $TARGET"
 echo "Next: restart Orca Note, enable “orca-focus” in Settings → Plugins,"
-echo "then right-click a block handle → 插件命令 → 开始专注，或点顶栏 ⏱ 打开计时面板。"
+echo "then right-click a block handle → 插件命令 → 开始专注，或点顶栏计时徽标打开计时面板。"

@@ -1,5 +1,5 @@
-import type { Block, BlockRefData, DbId } from "../orca"
-import { ensureBlocks } from "../data/blocks"
+import type { BlockRefData, DbId } from "../orca"
+import { ensureBlocks } from "./blocks"
 import { runEditorCommand, runEditorGroup } from "../lib/editor"
 import { getSettings } from "../lib/settings"
 
@@ -113,11 +113,6 @@ export function invalidateTagCache(): void {
   cachedId = null
 }
 
-export function getCachedTag(): { id: DbId | null; name: string } | null {
-  if (cachedName == null) return null
-  return { id: cachedId, name: cachedName }
-}
-
 export interface TagDataOptions {
   /** Focus session id (shared by start / note / end entries). */
   sessionId?: string
@@ -131,7 +126,8 @@ export interface TagDataOptions {
 
 /**
  * Tag instance data. Start entries carry 开始时间 + 目标, end entries carry
- * 开始时间 + 结束时间 + 目标, mid-session notes carry only 目标.
+ * 开始时间 + 结束时间 + 目标, mid-session notes carry only 目标; all three
+ * carry 专注ID when a session id is given.
  */
 export function buildTagData(opts: TagDataOptions): BlockRefData[] {
   const data: BlockRefData[] = []
@@ -148,8 +144,4 @@ export function buildTagData(opts: TagDataOptions): BlockRefData[] {
     data.push({ name: TAG_PROP_SESSION, type: 1, value: opts.sessionId })
   }
   return data
-}
-
-export function tagBlockForDisplay(): Block | null {
-  return cachedId != null ? (orca.state.blocks[cachedId] ?? null) : null
 }

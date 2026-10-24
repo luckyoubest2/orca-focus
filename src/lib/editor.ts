@@ -1,12 +1,8 @@
-import type { DbId } from "../orca"
+import { journalDate } from "../data/journal"
 
 export type EditorApi = {
   invokeCommand: (id: string, cursor: any, ...args: any[]) => Promise<any>
-  invokeTopCommand: (id: string, cursor: any, ...args: any[]) => Promise<any>
   invokeGroup: (fn: () => Promise<void>, opts?: { undoable?: boolean; topGroup?: boolean }) => Promise<void>
-  undo: () => Promise<void>
-  redo: () => Promise<void>
-  clearHistory?: () => void
 }
 
 export type ViewPanelLike = {
@@ -14,12 +10,10 @@ export type ViewPanelLike = {
   view: string
   viewArgs: Record<string, any>
   viewState: Record<string, any>
-  viewStateEditor?: EditorApi
 }
 
 type PanelNode = {
   id: string
-  direction?: "row" | "column"
   children?: PanelNode[]
   view?: string
   viewArgs?: Record<string, any>
@@ -42,7 +36,6 @@ export function forEachViewPanel(
       view: anyNode.view,
       viewArgs: anyNode.viewArgs ?? {},
       viewState: anyNode.viewState ?? {},
-      viewStateEditor: (anyNode.viewState as any)?.editor as EditorApi | undefined,
     })
   }
 }
@@ -103,7 +96,7 @@ export async function ensureEditor(): Promise<{ panel: ViewPanelLike; editor: Ed
   try {
     const id = orca.nav.addTo(orca.state.activePanel, "right", {
       view: "journal",
-      viewArgs: { date: new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())) },
+      viewArgs: { date: journalDate() },
       viewState: {},
     } as any)
     if (id != null) {
@@ -138,28 +131,4 @@ export async function runEditorGroup(
   const ctx = await ensureEditor()
   if (!ctx) throw new Error("orca-focus: no editor panel available")
   await ctx.editor.invokeGroup(() => fn(ctx.editor), opts)
-}
-
-/** Undo in a specific panel's editor (used by the notification action). */
-export async function undoInPanel(panelId: string): Promise<boolean> {
-  const panel = findPanelById(panelId)
-  const editor = editorOfPanel(panel)
-  if (!editor) return false
-  try {
-    await editor.undo()
-    return true
-  } catch (e) {
-    console.warn("[orca-focus] undo failed", e)
-    return false
-  }
-}
-
-export function activeEditorBlockId(): DbId | null {
-  try {
-    const cursor = (orca as any).utils?.getCursorDataFromSelection?.(document.getSelection())
-    const blockId = cursor?.anchor?.blockId
-    return typeof blockId === "number" ? blockId : null
-  } catch {
-    return null
-  }
 }

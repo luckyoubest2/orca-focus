@@ -1,5 +1,5 @@
 import type { Block, BlockRefData, DbId } from "../orca"
-import { blockExists, ensureBlock, ensureBlocks } from "./blocks"
+import { blockExists, blockTitle, ensureBlock, ensureBlocks } from "./blocks"
 import {
   collectInlineRefTargetIds,
   dateKey,
@@ -8,18 +8,21 @@ import {
   getJournalBlock,
   journalDate,
   loadBlockTree,
-  matchesNames,
 } from "./journal"
 import type { EditorApi } from "../lib/editor"
 import { runEditorCommand, runEditorGroup } from "../lib/editor"
 import { getSettings } from "../lib/settings"
 import { formatClock } from "../lib/util"
 import type { FocusTimer } from "../types"
-import { elapsedMs } from "../store"
 import { buildTagData, ensureFocusTag } from "./tag"
-import { blockTitle } from "./blocks"
 
-const targetCache = new Map<string, DbId>()
+interface CachedTarget {
+  id: DbId
+  /** Settings snapshot that produced this target; changing settings invalidates it. */
+  signature: string
+}
+
+const targetCache = new Map<string, CachedTarget>()
 
 /** Serialize journal writes so concurrent start/end actions cannot race. */
 let writeQueue: Promise<unknown> = Promise.resolve()
@@ -45,26 +48,36 @@ async function resolveRepoAlias(name: string): Promise<Block | null> {
 /**
  * Locate the block that collects focus entries.
  *
- * 1. an existing block in today's journal matching the configured names/aliases
- *    (handles headings written as `[DailyLog|Log]` / `[[DailyLog]]`),
- * 2. otherwise a repo-wide alias lookup (e.g. a standalone DailyLog page),
- * 3. otherwise create a plain block under the configured journal section.
+ * - with configured names: an existing block in today's journal matching the
+ *   names/aliases (handles headings written as `[DailyLog|Log]` / `[[DailyLog]]`),
+ *   otherwise a repo-wide alias lookup, otherwise auto-create a plain block under
+ *   a configured journal section (only when section names are configured too);
+ * - blank log block name: no lookup and no creation — append entries to the end
+ *   of today's journal;
+ * - blank section names: never auto-create; fall back to the journal end.
  */
 async function findOrCreateLogTarget(date: Date): Promise<Block> {
   const settings = getSettings()
   const day = journalDate(date)
   const key = dateKey(day)
+  const signature = JSON.stringify([settings.logBlockNames, settings.logSectionNames])
 
   const journal = await getJournalBlock(day)
   if (journal == null) {
     throw new Error("找不到这一天的日记块，请先在 Orca 中打开一次当天的日记。")
   }
 
-  const cachedId = targetCache.get(key)
-  if (cachedId != null) {
-    const cached = await ensureBlock(cachedId)
-    if (cached != null) return cached
-    targetCache.delete(key)
+  const cached = targetCache.get(key)
+  if (cached != null && cached.signature === signature) {
+    const cachedBlock = await ensureBlock(cached.id)
+    if (cachedBlock != null) return cachedBlock
+  }
+  targetCache.delete(key)
+
+  // Blank log block name: write directly to the end of today's journal.
+  if (settings.logBlockNames.length === 0) {
+    targetCache.set(key, { id: journal.id, signature })
+    return journal
   }
 
   const blocks = await loadBlockTree(journal.id)
@@ -84,8 +97,14 @@ async function findOrCreateLogTarget(date: Date): Promise<Block> {
     }
   }
   if (existing != null) {
-    targetCache.set(key, existing.id)
+    targetCache.set(key, { id: existing.id, signature })
     return existing
+  }
+
+  // Blank section names: no auto-creation, fall back to the journal end.
+  if (settings.logSectionNames.length === 0) {
+    targetCache.set(key, { id: journal.id, signature })
+    return journal
   }
 
   const section = findLogSection(journal.id, settings.logSectionNames)
@@ -101,10 +120,8 @@ async function findOrCreateLogTarget(date: Date): Promise<Block> {
   )
   if (typeof newId !== "number") throw new Error(`创建「${blockName}」块失败。`)
   const created = await ensureBlock(newId)
-  if (created != null) {
-    targetCache.set(key, newId)
-    return created
-  }
+  targetCache.set(key, { id: newId, signature })
+  if (created != null) return created
   return { id: newId } as Block
 }
 
@@ -124,8 +141,8 @@ interface InsertEntryOptions {
 }
 
 /**
- * Insert an entry under the log target. The source block is always linked
- * through the `#专注日志` tag's 目标 block-reference property; the optional
+ * Insert an entry under the log target. When the source block still exists it is
+ * linked through the focus tag's 目标 block-reference property; the optional
  * inline reference is only used as the default content of "no note" entries.
  */
 async function insertEntry(opts: InsertEntryOptions): Promise<DbId> {
@@ -185,7 +202,7 @@ async function insertEntry(opts: InsertEntryOptions): Promise<DbId> {
  * "Start entry": always written when a focus session starts.
  * - note filled:   `HH:mm {note}`
  * - note empty:    `HH:mm 开始专注：` + inline reference to the focus target
- * Tagged with #专注日志 (开始时间 + 目标; 结束时间 left empty).
+ * Tagged with the focus tag (开始时间 + 目标 + 专注ID; 结束时间 left empty).
  */
 export function writeStartEntry(timer: FocusTimer): Promise<DbId> {
   return enqueue(async () => {
@@ -214,14 +231,13 @@ export function writeStartEntry(timer: FocusTimer): Promise<DbId> {
 
 export interface EndEntryResult {
   blockId: DbId
-  elapsedMs: number
 }
 
 /**
  * "End entry":
  * - summary filled: `HH:mm {summary}`
  * - summary empty:  `HH:mm 结束专注：` + inline reference to the focus target
- * Tagged with #专注日志 (开始时间 + 结束时间 + 目标).
+ * Tagged with the focus tag (开始时间 + 结束时间 + 目标 + 专注ID).
  */
 export function writeEndEntry(
   timer: FocusTimer,
@@ -230,7 +246,6 @@ export function writeEndEntry(
 ): Promise<EndEntryResult> {
   return enqueue(async () => {
     const tag = await ensureFocusTag()
-    const elapsed = elapsedMs(timer, endMs)
     const target = await findOrCreateLogTarget(new Date(endMs))
     const alive = (await blockExists(timer.blockId)) ? timer.blockId : null
     const summaryText = summary.trim()
@@ -251,13 +266,13 @@ export function writeEndEntry(
       tagDataFactory: (targetRefId) =>
         buildTagData({ startMs: timer.createdAt, endMs, targetRefId, sessionId: timer.sessionId }),
     })
-    return { blockId, elapsedMs: elapsed }
+    return { blockId }
   })
 }
 
 /**
- * Mid-session note: `HH:mm {note}` tagged with #专注日志 carrying only the 目标
- * block-reference (开始时间/结束时间 intentionally empty).
+ * Mid-session note: `HH:mm {note}` tagged with the focus tag carrying 目标 (when
+ * the source block still exists) and 专注ID; 开始时间/结束时间 intentionally empty.
  */
 export function writeNoteEntry(timer: FocusTimer, nowMs: number, note: string): Promise<DbId> {
   return enqueue(async () => {
@@ -295,9 +310,4 @@ export function liveTitle(timer: FocusTimer): string {
 
 export function invalidateTargetCache(): void {
   targetCache.clear()
-}
-
-export function matchesLogBlock(block: Block): boolean {
-  const settings = getSettings()
-  return matchesNames(block, settings.logBlockNames)
 }

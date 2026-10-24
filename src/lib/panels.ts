@@ -1,7 +1,72 @@
 import { PANEL_VIEW } from "../config"
-import { findEditorPanel, findPanelByView, findPanelById, editorOfPanel } from "./editor"
+import { findPanelByView } from "./editor"
 
-export { findPanelByView } from "./editor"
+export { findPanelByView }
+
+/**
+ * Default width of the focus panel when it is split into a horizontal row, as a
+ * fraction of the row. 1/5 keeps the timer panel narrow while leaving the note
+ * area usable; the user can still drag the divider to resize it.
+ */
+const PANEL_WIDTH_FRACTION = 1 / 5
+
+type PanelLayoutNode = {
+  id: string
+  direction?: "row" | "column"
+  children?: PanelLayoutNode[]
+  width?: number
+  height?: number
+}
+
+/** Parent container + child index of a panel (mirrors Orca's internal layout walk). */
+function findPanelLayout(panelId: string): { container: PanelLayoutNode; index: number } | null {
+  const stack: PanelLayoutNode[] = [orca.state.panels as any]
+  while (stack.length > 0) {
+    const node = stack.pop()
+    if (node == null || !Array.isArray(node.children)) continue
+    for (let i = 0; i < node.children.length; i += 1) {
+      const child = node.children[i]
+      if (child == null) continue
+      if (child.id === panelId) return { container: node, index: i }
+      if (Array.isArray(child.children)) stack.push(child)
+    }
+  }
+  return null
+}
+
+/** Width fraction of a child in a horizontal row (matches Orca's PanelRow fallback). */
+function rowFraction(child: PanelLayoutNode): number {
+  if (typeof child.width === "number" && child.width > 0) return child.width
+  if (typeof child.height === "number" && child.height > 0) return child.height
+  return 0
+}
+
+/**
+ * Orca splits a row evenly (50/50) when a panel is added. Shrink the focus panel
+ * to its default fraction and scale the other panels proportionally.
+ */
+function applyDefaultPanelWidth(panelId: string): void {
+  try {
+    const layout = findPanelLayout(panelId)
+    if (layout == null || layout.container.direction !== "row") return
+    const children = layout.container.children ?? []
+    if (children.length < 2) return
+    const otherTotal = children.reduce(
+      (sum, child, index) => (index === layout.index ? sum : sum + rowFraction(child)),
+      0,
+    )
+    const rest = 1 - PANEL_WIDTH_FRACTION
+    const values = children.map((child, index) => {
+      if (index === layout.index) return PANEL_WIDTH_FRACTION
+      const fraction = rowFraction(child)
+      if (otherTotal > 0 && fraction > 0) return (fraction / otherTotal) * rest
+      return rest / Math.max(1, children.length - 1)
+    })
+    orca.nav.changeSizes(panelId, values)
+  } catch (e) {
+    console.warn("[orca-focus] failed to set focus panel width", e)
+  }
+}
 
 /** Open (or focus) the custom focus panel; `args` are merged into its viewArgs. */
 export function openFocusPanel(args?: Record<string, any>): string | null {
@@ -23,7 +88,10 @@ export function openFocusPanel(args?: Record<string, any>): string | null {
       viewArgs: args ?? {},
       viewState: {},
     } as any)
-    if (id != null) return id
+    if (id != null) {
+      applyDefaultPanelWidth(id)
+      return id
+    }
     // Fallback for layouts where adding a panel is not possible.
     orca.nav.goTo(PANEL_VIEW as any, args ?? {})
     return null
@@ -45,14 +113,4 @@ export function toggleFocusPanel(): void {
     return
   }
   openFocusPanel()
-}
-
-export function editorPanelId(): string | null {
-  const found = findEditorPanel()
-  return found?.panel.id ?? null
-}
-
-export function hasEditorPanel(panelId: string | null): boolean {
-  if (panelId == null) return false
-  return editorOfPanel(findPanelById(panelId)) != null
 }

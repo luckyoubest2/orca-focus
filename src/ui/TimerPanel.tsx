@@ -3,6 +3,7 @@ import { discardFocus } from "../actions"
 import { journalDate } from "../data/journal"
 import { liveTitle } from "../data/log"
 import { ensureBlocks } from "../data/blocks"
+import { getSettings } from "../lib/settings"
 import { formatClock, formatElapsedClock, formatDurationHuman } from "../lib/util"
 import {
   pauseAllRunning,
@@ -40,7 +41,7 @@ function TimerCard({ timerId }: { timerId: string }) {
   }
 
   return (
-    <div className={`of-card ${running ? "of-card-running" : "of-card-paused"}`}>
+    <div className={`of-card ${running ? "of-card-running" : ""}`}>
       <div className="of-card-main">
         <div className={`of-card-dot ${running ? "of-card-dot-running" : ""}`} />
         <div className="of-card-info">
@@ -48,7 +49,7 @@ function TimerCard({ timerId }: { timerId: string }) {
             {title || "未命名块"}
           </div>
           <div className="of-card-meta">
-            {running ? `开始于 ${formatClock(timer.startedAt)}` : "已暂停"}
+            {running ? `开始于 ${formatClock(timer.createdAt)}` : "已暂停"}
             {timer.startNote ? ` · ${timer.startNote}` : ""}
           </div>
         </div>
@@ -124,6 +125,7 @@ export default function FocusPanel({ panelId, tab }: { panelId: string; tab?: st
   const openJournal = () => {
     orca.nav.goTo("journal", { date: journalDate() })
   }
+  const logBlockName = getSettings().logBlockNames[0] ?? "工作日志"
 
   return (
     <div className="of-panel" data-panel-id={panelId}>
@@ -139,7 +141,7 @@ export default function FocusPanel({ panelId, tab }: { panelId: string; tab?: st
               <i className="ti ti-player-pause" />
             </Button>
           )}
-          <Button variant="plain" className="of-header-btn" title="打开今日工作日志" onClick={openJournal}>
+          <Button variant="plain" className="of-header-btn" title="打开今日日记" onClick={openJournal}>
             <i className="ti ti-notebook" />
           </Button>
           <PanelMenuButton panelId={panelId} />
@@ -199,7 +201,7 @@ export default function FocusPanel({ panelId, tab }: { panelId: string; tab?: st
           </div>
 
           <div className="of-panel-footer">
-            右键小点 → 插件命令 → 开始专注；结束记录会写到今日「工作日志」。
+            右键小点 → 插件命令 → 开始专注；结束记录会写到今日「{logBlockName}」。
           </div>
         </>
       ) : (

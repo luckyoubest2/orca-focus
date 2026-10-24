@@ -1,20 +1,9 @@
-import type { Block, DbId } from "../orca"
-import { getRepr } from "../data/blocks"
+import type { DbId } from "../orca"
 import { ensureBlock } from "../data/blocks"
 import { ensureActionBlock } from "../data/actionBlock"
 import { findEditorPanel } from "./editor"
 import { isActionBlockMutationAllowed, withActionBlockMutationAllowed } from "./actionBlockGuard"
 import { setTimerActionBlock, store } from "../store"
-
-const ACTION_TYPE = "orca-focus.actions"
-
-/** Is this block an action block belonging to the given timer? */
-export function isActionBlockOf(block: Block | null | undefined, timerId: string, sourceBlockId?: number): boolean {
-  const repr = getRepr(block)
-  if (repr?.type !== ACTION_TYPE) return false
-  if (typeof repr.timerId === "string" && repr.timerId === timerId) return true
-  return typeof sourceBlockId === "number" && repr.sourceBlockId === sourceBlockId
-}
 
 function actionBlockIds(): Set<number> {
   const ids = new Set<number>()
@@ -63,14 +52,14 @@ function registerHook(id: string, hook: BeforeHook): void {
 /** Register before-command hooks that keep the action block attached to its block. */
 export function installActionBlockBinding(): void {
   if (hooks.length > 0) return
-  // [cursor-excluded args] blockIds, refBlockId, position, options
+  // moveBlocks / deleteBlocks: (blockIds, ...)
   registerHook("core.editor.moveBlocks", (_cmd, blockIds) => !rejects(blockIds))
   registerHook("core.editor.deleteBlocks", (_cmd, blockIds) => !rejects(blockIds))
   // mergeBlocks: (blockId, targetBlockId, content?)
   registerHook("core.editor.mergeBlocks", (_cmd, blockId, targetBlockId) => {
     return !(rejects(blockId) || rejects(targetBlockId))
   })
-  // copyBlocks: (blockIds, refBlockId, position, ...) — avoid making copies of the bar.
+  // copyBlocks: (blockIds, ...) — never copy the action block.
   registerHook("core.editor.copyBlocks", (_cmd, blockIds) => !rejects(blockIds))
 }
 
@@ -134,11 +123,4 @@ export function stopActionBlockRepair(): void {
   if (repairHandle == null) return
   clearInterval(repairHandle)
   repairHandle = null
-}
-
-/** Is this rendered action block the canonical one recorded on the timer? */
-export function isCanonicalActionBlock(timerId: string, blockId: DbId): boolean {
-  const timer = store.timers.find((candidate) => candidate.id === timerId)
-  if (timer == null) return false
-  return timer.actionBlockId === blockId
 }
