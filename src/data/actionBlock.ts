@@ -5,6 +5,7 @@ import type { FocusTimer } from "../types"
 import { getRepr } from "./blocks"
 import { ensureBlock } from "./blocks"
 import { setTimerActionBlock, store } from "../store"
+import { withActionBlockMutationAllowed } from "../lib/actionBlockGuard"
 
 function actionEditor(): EditorApi | null {
   return findEditorPanel()?.editor ?? null
@@ -33,7 +34,17 @@ async function findExistingActionBlock(timer: FocusTimer): Promise<number | null
  * 备注 / 暂停·继续 / 结束 buttons. Inserted as the first child so it sits right
  * under the block's own text.
  */
-export async function ensureActionBlock(timer: FocusTimer): Promise<number | null> {
+const ensureInFlight = new Map<string, Promise<number | null>>()
+
+export function ensureActionBlock(timer: FocusTimer): Promise<number | null> {
+  const running = ensureInFlight.get(timer.id)
+  if (running != null) return running
+  const task = ensureActionBlockInternal(timer).finally(() => ensureInFlight.delete(timer.id))
+  ensureInFlight.set(timer.id, task)
+  return task
+}
+
+async function ensureActionBlockInternal(timer: FocusTimer): Promise<number | null> {
   if (timer.actionBlockId != null) {
     const existing = await ensureBlock(timer.actionBlockId)
     if (existing != null && isActionBlock(getRepr(existing), timer)) return timer.actionBlockId
@@ -77,7 +88,11 @@ export async function removeActionBlock(timer: FocusTimer): Promise<void> {
   try {
     if (editor != null) {
       const existing = await orca.invokeBackend("get-block", blockId)
-      if (existing != null) await editor.invokeCommand("core.editor.deleteBlocks", null, [blockId])
+      if (existing != null) {
+        await withActionBlockMutationAllowed(async () => {
+          await editor.invokeCommand("core.editor.deleteBlocks", null, [blockId])
+        })
+      }
     } else {
       // Plugin teardown path: delete through the backend so no editor is needed.
       await orca.invokeBackend("delete-blocks", [blockId])
@@ -111,8 +126,13 @@ export async function cleanupOrphanActionBlocks(): Promise<number> {
   if (orphans.length === 0) return 0
   const editor = actionEditor()
   try {
-    if (editor != null) await editor.invokeCommand("core.editor.deleteBlocks", null, orphans)
-    else await orca.invokeBackend("delete-blocks", orphans)
+    if (editor != null) {
+      await withActionBlockMutationAllowed(async () => {
+        await editor.invokeCommand("core.editor.deleteBlocks", null, orphans)
+      })
+    } else {
+      await orca.invokeBackend("delete-blocks", orphans)
+    }
   } catch (e) {
     console.warn("[orca-focus] failed to clean orphan action blocks", e)
     return 0

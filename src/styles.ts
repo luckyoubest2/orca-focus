@@ -460,12 +460,6 @@ export const ACTION_BLOCK_CSS = `
   line-height: 1;
 }
 
-/* The action block does not need its own bullet / folding caret. */
-.orca-block:has(> .orca-repr.of-repr-focus-actions) .orca-block-handle,
-.orca-block:has(> .orca-repr.of-repr-focus-actions) .orca-block-folding-handle {
-  visibility: hidden;
-}
-
 .of-focus-action-root {
   display: inline-flex;
   align-items: center;

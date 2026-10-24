@@ -147,6 +147,10 @@ src/
   - 插件 unload → `removeAllActionBlocks`，避免渲染器卸载后笔记里出现未知类型块；重新启用后 `scheduleActionBlockReconcile` 等编辑器可用时补建；
   - 异常退出留下的孤儿块：渲染器显示「专注已结束」兜底，另有命令 `专注：清理残留的专注按钮块` 扫描 `orca.state.blocks` 清理；
 - converter：plain / markdown / html 均输出空串，避免导出/复制带上操作块；
+- 绑定（v0.7.2）：`registerBeforeCommand` 拦截 `core.editor.moveBlocks` / `deleteBlocks` / `mergeBlocks` / `copyBlocks`，只要参数里出现当前计时器的操作块 id 就拒绝并提示；插件自己的删除/移动通过 `withActionBlockMutationAllowed` 放行；
+- 自检 `repairActionBlockBindings()` 每 3 秒跑一次：块丢失 → 重新创建；`parent` 不对或不在 firstChild → `moveBlocks` 拉回（注意 moveBlocks 的 refBlock 参数是 DbId，不是 Block 对象）；源块被删除时只清掉记录不重建；
+- 渲染器校验 `timer.actionBlockId === 当前块 id`，复制/粘贴出来的副本显示「已停用」并提供删除按钮，避免多个副本控制同一个计时器；
+- `ensureActionBlock` 用一个 in-flight Promise map 串行化，避免启动补建和自检循环同时插入两个操作块；
 - 与浮层方案相比：位置由文档布局决定（不漂移、无需定位代码），但会改变文档结构（多一个子块），父块折叠时不可见，且操作块的插入/删除会进撤销栈。
 
 ### 5.4 退出自动暂停

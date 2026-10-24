@@ -1,5 +1,7 @@
 import React from "react"
 import { formatElapsedClock } from "../lib/util"
+import { withActionBlockMutationAllowed } from "../lib/actionBlockGuard"
+import { isCanonicalActionBlock } from "../lib/actionBlockBinding"
 import { runEditorCommand } from "../lib/editor"
 import {
   elapsedMs,
@@ -34,14 +36,25 @@ function ActionButton({ icon, title, onClick }: { icon: string; title: string; o
   )
 }
 
-function ActiveRow({ timerId, sourceBlockId }: { timerId?: string; sourceBlockId?: number }) {
+function ActiveRow({
+  blockId,
+  timerId,
+  sourceBlockId,
+}: {
+  blockId: number
+  timerId?: string
+  sourceBlockId?: number
+}) {
   const snapshot = useFocusStore()
   const timer = snapshot.timers.find(
     (candidate) =>
       (typeof timerId === "string" && candidate.id === timerId) ||
       (typeof sourceBlockId === "number" && candidate.blockId === sourceBlockId),
   )
-  if (timer == null) return <StaleRow />
+  if (timer == null) return <StaleRow blockId={blockId} reason="ended" />
+  // Pasted/copied action blocks are inert: only the canonical block attached by
+  // the plugin may control the timer.
+  if (!isCanonicalActionBlock(timer.id, blockId)) return <StaleRow blockId={blockId} reason="duplicate" />
   const running = timer.status === "running"
   return (
     <span className="of-focus-action-row" contentEditable={false}>
@@ -63,13 +76,15 @@ function ActiveRow({ timerId, sourceBlockId }: { timerId?: string; sourceBlockId
   )
 }
 
-function StaleRow() {
+function StaleRow({ blockId, reason }: { blockId: number; reason: "ended" | "duplicate" }) {
   return (
     <span className="of-focus-action-row of-focus-action-row-stale" contentEditable={false}>
       <i className="ti ti-clock-off of-focus-action-state" />
-      <span className="of-focus-action-elapsed">专注已结束</span>
+      <span className="of-focus-action-elapsed">
+        {reason === "duplicate" ? "复制出来的操作块（已停用）" : "专注已结束"}
+      </span>
       <span className="of-focus-action-sep" />
-      <span className="of-focus-action-hint">这个按钮块可以删掉</span>
+      <ActionButton icon="ti-trash" title="删除这个操作块" onClick={() => void deleteActionBlock(blockId)} />
     </span>
   )
 }
@@ -141,7 +156,7 @@ export default function FocusActionBlockRenderer(props: any) {
       contentAttrs={{ contentEditable: false }}
       contentJsx={
         <span ref={rootRef} className="of-focus-action-root">
-          <ActiveRow timerId={timerId} sourceBlockId={sourceBlockId} />
+          <ActiveRow blockId={blockId} timerId={timerId} sourceBlockId={sourceBlockId} />
         </span>
       }
     />
@@ -151,7 +166,9 @@ export default function FocusActionBlockRenderer(props: any) {
 /** Delete a stale action block from user-facing fallback UI. */
 export async function deleteActionBlock(blockId: number): Promise<void> {
   try {
-    await runEditorCommand("core.editor.deleteBlocks", [blockId])
+    await withActionBlockMutationAllowed(async () => {
+      await runEditorCommand("core.editor.deleteBlocks", [blockId])
+    })
   } catch (e) {
     console.warn("[orca-focus] failed to delete stale action block", blockId, e)
   }

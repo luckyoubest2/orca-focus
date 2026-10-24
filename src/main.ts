@@ -25,11 +25,11 @@ import {
   undoLastEnd,
   uninstallUndoWatcher,
 } from "./actions"
-import { cleanupOrphanActionBlocks, ensureActionBlock, removeAllActionBlocks } from "./data/actionBlock"
+import { cleanupOrphanActionBlocks, removeAllActionBlocks } from "./data/actionBlock"
 import { invalidateTargetCache } from "./data/log"
 import { invalidateTagCache } from "./data/tag"
-import { findEditorPanel } from "./lib/editor"
 import { findPanelByView, openFocusPanel, toggleFocusPanel } from "./lib/panels"
+import { installActionBlockBinding, startActionBlockRepair, stopActionBlockRepair, uninstallActionBlockBinding } from "./lib/actionBlockBinding"
 import { disposeFocusIndicators, installFocusIndicators } from "./lib/blockIndicators"
 import { getSettings, registerSettings } from "./lib/settings"
 import { ACTION_BLOCK_CSS, BLOCK_INDICATOR_CSS, FOCUS_CSS, HISTORY_CSS, focusTagCss } from "./styles"
@@ -49,28 +49,6 @@ import { renderBlockMenu } from "./ui/blockMenu"
 
 let dialogRoot: { render: (node: React.ReactNode) => void; unmount: () => void } | null = null
 let dialogHostEl: HTMLElement | null = null
-let reconcileHandle: ReturnType<typeof setInterval> | null = null
-
-/**
- * Re-create action blocks for restored timers once an editor is available
- * (e.g. after the plugin was disabled and re-enabled, which removes them).
- */
-function scheduleActionBlockReconcile(): void {
-  if (reconcileHandle != null) return
-  let attempts = 0
-  reconcileHandle = setInterval(() => {
-    attempts += 1
-    const missing = store.timers.filter((timer) => timer.actionBlockId == null)
-    if (missing.length === 0 || attempts > 40) {
-      if (reconcileHandle != null) clearInterval(reconcileHandle)
-      reconcileHandle = null
-      return
-    }
-    if (findEditorPanel() == null) return
-    for (const timer of missing) void ensureActionBlock(timer)
-  }, 1200)
-}
-
 function mountDialogs(): void {
   if (dialogHostEl != null) return
   const el = document.createElement("div")
@@ -127,7 +105,6 @@ export async function load(pluginName: string): Promise<void> {
   } catch (e) {
     console.warn("[orca-focus] action block renderer registration failed", e)
   }
-  scheduleActionBlockReconcile()
 
   try {
     orca.blockMenuCommands.registerBlockMenuCommand(BLOCK_MENU_ID, {
@@ -236,6 +213,8 @@ export async function load(pluginName: string): Promise<void> {
   }
 
   installUndoWatcher()
+  installActionBlockBinding()
+  startActionBlockRepair()
   installFocusIndicators()
 
   if (init.crashPausedCount > 0 || init.quitPausedCount > 0) {
@@ -249,10 +228,7 @@ export async function load(pluginName: string): Promise<void> {
 }
 
 export async function unload(): Promise<void> {
-  if (reconcileHandle != null) {
-    clearInterval(reconcileHandle)
-    reconcileHandle = null
-  }
+  stopActionBlockRepair()
   uninstallUndoWatcher()
   disposeFocusIndicators()
   closeDialog()
@@ -263,6 +239,7 @@ export async function unload(): Promise<void> {
   } catch (e) {
     console.warn("[orca-focus] failed to remove action blocks on unload", e)
   }
+  uninstallActionBlockBinding()
   pauseAllRunning()
   await flushState()
   disposeStore()
