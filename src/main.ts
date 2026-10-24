@@ -1,6 +1,8 @@
 import React from "react"
 import {
+  ACTION_BLOCK_TYPE,
   BLOCK_MENU_ID,
+  CMD_CLEAN_ACTION_BLOCKS,
   CMD_END_CURRENT,
   CMD_NOTE_CURRENT,
   CMD_OPEN_HISTORY,
@@ -8,7 +10,6 @@ import {
   CMD_START_CURRENT,
   CMD_TOGGLE_CURRENT,
   CMD_UNDO_END,
-  BLOCK_ACTIONS_HOST_ID,
   DIALOG_HOST_ID,
   HEADBAR_ID,
   PANEL_VIEW,
@@ -24,12 +25,14 @@ import {
   undoLastEnd,
   uninstallUndoWatcher,
 } from "./actions"
+import { cleanupOrphanActionBlocks, ensureActionBlock, removeAllActionBlocks } from "./data/actionBlock"
 import { invalidateTargetCache } from "./data/log"
 import { invalidateTagCache } from "./data/tag"
+import { findEditorPanel } from "./lib/editor"
 import { findPanelByView, openFocusPanel, toggleFocusPanel } from "./lib/panels"
 import { disposeFocusIndicators, installFocusIndicators } from "./lib/blockIndicators"
 import { getSettings, registerSettings } from "./lib/settings"
-import { BLOCK_ACTIONS_CSS, BLOCK_INDICATOR_CSS, FOCUS_CSS, HISTORY_CSS, focusTagCss } from "./styles"
+import { ACTION_BLOCK_CSS, BLOCK_INDICATOR_CSS, FOCUS_CSS, HISTORY_CSS, focusTagCss } from "./styles"
 import {
   closeDialog,
   disposeStore,
@@ -38,7 +41,7 @@ import {
   pauseAllRunning,
   store,
 } from "./store"
-import { mountBlockActions } from "./ui/BlockActions"
+import FocusActionBlockRenderer from "./ui/ActionBlock"
 import { DialogHost } from "./ui/dialogs"
 import FocusChip from "./ui/FocusChip"
 import FocusPanel from "./ui/TimerPanel"
@@ -46,8 +49,27 @@ import { renderBlockMenu } from "./ui/blockMenu"
 
 let dialogRoot: { render: (node: React.ReactNode) => void; unmount: () => void } | null = null
 let dialogHostEl: HTMLElement | null = null
-let actionsHost: { render: (node: React.ReactNode) => void; unmount: () => void; el: HTMLElement } | null =
-  null
+let reconcileHandle: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Re-create action blocks for restored timers once an editor is available
+ * (e.g. after the plugin was disabled and re-enabled, which removes them).
+ */
+function scheduleActionBlockReconcile(): void {
+  if (reconcileHandle != null) return
+  let attempts = 0
+  reconcileHandle = setInterval(() => {
+    attempts += 1
+    const missing = store.timers.filter((timer) => timer.actionBlockId == null)
+    if (missing.length === 0 || attempts > 40) {
+      if (reconcileHandle != null) clearInterval(reconcileHandle)
+      reconcileHandle = null
+      return
+    }
+    if (findEditorPanel() == null) return
+    for (const timer of missing) void ensureActionBlock(timer)
+  }, 1200)
+}
 
 function mountDialogs(): void {
   if (dialogHostEl != null) return
@@ -58,21 +80,6 @@ function mountDialogs(): void {
   const createRoot = (window as any).createRoot as (node: Element) => any
   dialogRoot = createRoot(el)
   dialogRoot!.render(React.createElement(DialogHost))
-}
-
-function mountActions(): void {
-  if (actionsHost != null) return
-  actionsHost = mountBlockActions(BLOCK_ACTIONS_HOST_ID)
-}
-
-function unmountActions(): void {
-  try {
-    actionsHost?.unmount()
-  } catch (e) {
-    console.warn("[orca-focus] actions unmount failed", e)
-  }
-  actionsHost?.el.remove()
-  actionsHost = null
 }
 
 function unmountDialogs(): void {
@@ -99,19 +106,28 @@ export async function load(pluginName: string): Promise<void> {
 
   await registerSettings(pluginName)
   try {
-    orca.themes.injectCSS(FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + BLOCK_ACTIONS_CSS + focusTagCss(getSettings().tagName), STYLE_ROLE)
+    orca.themes.injectCSS(FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + ACTION_BLOCK_CSS + focusTagCss(getSettings().tagName), STYLE_ROLE)
   } catch (e) {
     console.warn("[orca-focus] injectCSS failed, falling back to <style>", e)
     const style = document.createElement("style")
     style.id = `${STYLE_ROLE}-styles`
-    style.textContent = FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + BLOCK_ACTIONS_CSS + focusTagCss(getSettings().tagName)
+    style.textContent = FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + ACTION_BLOCK_CSS + focusTagCss(getSettings().tagName)
     document.head.appendChild(style)
   }
 
   mountDialogs()
-  mountActions()
 
   const init = await initStore()
+
+  try {
+    orca.renderers.registerBlock(ACTION_BLOCK_TYPE, false, FocusActionBlockRenderer)
+    orca.converters.registerBlock("plain", ACTION_BLOCK_TYPE, () => "")
+    orca.converters.registerBlock("markdown", ACTION_BLOCK_TYPE, () => "")
+    orca.converters.registerBlock("html", ACTION_BLOCK_TYPE, () => "")
+  } catch (e) {
+    console.warn("[orca-focus] action block renderer registration failed", e)
+  }
+  scheduleActionBlockReconcile()
 
   try {
     orca.blockMenuCommands.registerBlockMenuCommand(BLOCK_MENU_ID, {
@@ -193,6 +209,19 @@ export async function load(pluginName: string): Promise<void> {
   )
 
   orca.commands.registerCommand(
+    CMD_CLEAN_ACTION_BLOCKS,
+    async () => {
+      const count = await cleanupOrphanActionBlocks()
+      orca.notify(
+        count > 0 ? "success" : "info",
+        count > 0 ? `已清理 ${count} 个残留的专注按钮块。` : "没有发现残留的专注按钮块。",
+        { title: "专注" },
+      )
+    },
+    "专注：清理残留的专注按钮块",
+  )
+
+  orca.commands.registerCommand(
     CMD_UNDO_END,
     async () => {
       await undoLastEnd()
@@ -220,9 +249,20 @@ export async function load(pluginName: string): Promise<void> {
 }
 
 export async function unload(): Promise<void> {
+  if (reconcileHandle != null) {
+    clearInterval(reconcileHandle)
+    reconcileHandle = null
+  }
   uninstallUndoWatcher()
   disposeFocusIndicators()
   closeDialog()
+  try {
+    // Remove the real action blocks before the renderer is unregistered so the
+    // notes don't end up with unknown-type blocks.
+    await removeAllActionBlocks()
+  } catch (e) {
+    console.warn("[orca-focus] failed to remove action blocks on unload", e)
+  }
   pauseAllRunning()
   await flushState()
   disposeStore()
@@ -248,6 +288,15 @@ export async function unload(): Promise<void> {
   orca.commands.unregisterEditorCommand(CMD_END_CURRENT)
   orca.commands.unregisterEditorCommand(CMD_NOTE_CURRENT)
   orca.commands.unregisterCommand(CMD_UNDO_END)
+  orca.commands.unregisterCommand(CMD_CLEAN_ACTION_BLOCKS)
+  try {
+    orca.renderers.unregisterBlock(ACTION_BLOCK_TYPE)
+    orca.converters.unregisterBlock("plain", ACTION_BLOCK_TYPE)
+    orca.converters.unregisterBlock("markdown", ACTION_BLOCK_TYPE)
+    orca.converters.unregisterBlock("html", ACTION_BLOCK_TYPE)
+  } catch (e) {
+    console.warn("[orca-focus] action block renderer unregister failed", e)
+  }
   orca.panels.unregisterPanel(PANEL_VIEW)
   try {
     orca.blockMenuCommands.unregisterBlockMenuCommand(BLOCK_MENU_ID)
@@ -260,7 +309,6 @@ export async function unload(): Promise<void> {
     console.warn("[orca-focus] headbar unregister failed", e)
   }
 
-  unmountActions()
   unmountDialogs()
   try {
     orca.themes.removeCSS(STYLE_ROLE)

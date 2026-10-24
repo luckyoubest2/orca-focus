@@ -118,6 +118,7 @@ function normalizeTimer(raw: any): FocusTimer | null {
     createdAt,
     startNote: typeof raw.startNote === "string" ? raw.startNote : "",
     startLogBlockId: typeof raw.startLogBlockId === "number" ? raw.startLogBlockId : null,
+    actionBlockId: typeof raw.actionBlockId === "number" ? raw.actionBlockId : null,
     lastSeenAt: Number(raw.lastSeenAt) || Date.now(),
     pausedByQuit: raw.pausedByQuit === true,
   }
@@ -306,6 +307,7 @@ export function createTimer(blockId: number, title: string, startNote: string): 
     createdAt: now,
     startNote: startNote.trim(),
     startLogBlockId: null,
+    actionBlockId: null,
     lastSeenAt: now,
   }
   store.timers.push(timer)
@@ -391,6 +393,13 @@ export function restoreTimer(timer: FocusTimer): void {
   if (store.timers.some((existing) => existing.id === timer.id)) return
   store.timers.push(timer)
   store.now = Date.now()
+  saveState()
+}
+
+export function setTimerActionBlock(id: string, blockId: number | null): void {
+  const timer = getTimer(id)
+  if (!timer) return
+  timer.actionBlockId = blockId
   saveState()
 }
 

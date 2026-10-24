@@ -136,16 +136,18 @@ src/
 - 历史 tab 在 `store.historyVersion` 变化（开始/结束/备注/撤销写入成功）时自动重查，也可手动刷新；
 - 命令「专注：打开专注历史」通过 `openFocusPanel({tab:"history"})` 打开面板并切到历史 tab。
 
-### 5.3d 块末尾悬浮操作条（v0.6）
+### 5.3d 专注操作子块（v0.7，方案 B：非浮层）
 
-- 需求：计时中的块，在文字末尾直接给出「备注 / 暂停·继续 / 结束」三个按钮；
-- 不往阅读 DOM / contentEditable 里插节点（避免污染复制/撤销/导出），改为**固定定位浮层**：
-  - 挂一个 `position: fixed; inset: 0; pointer-events: none` 的 host 到 body，React root 渲染 `BlockActionsLayer`；
-  - 对每个 active timer 的块，查 `.orca-block[data-id]` / `[data-mirror-id]`（镜像也支持），拿 `.orca-repr-main-content`；
-  - 用 `Range.getClientRects()` 取最后一段文字的 rect，把操作条放在 `rect.right + 6`、垂直居中，并夹在内容框内；
-  - 滚动（capture）、resize、store 变更时 rAF 节流重算；600ms 轮询兜底；对比 item 列表避免无谓渲染；
-  - 按钮 mousedown/click 都 preventDefault+stopPropagation，避免抢编辑器光标；备注/暂停继续/结束复用现有 action 与弹窗；
-  - 无 active timer 时组件返回 null；插件 unload 时卸载 root 并移除 host。
+- 需求：计时中的块，在块下方直接给出「备注 / 暂停·继续 / 结束」按钮，且**不用固定定位浮层**；
+- 实现：注册自定义块渲染器 `orca-focus.actions`，计时开始时在源块的 **firstChild** 插入一个真实子块，`_repr` 带上 `sourceBlockId` / `timerId`；结束时删除、撤销结束时重新插入；
+- 渲染器用 `orca.components.BlockShell` + `contentJsx` 输出一行紧凑操作条（状态图标、实时用时、三个按钮），`contentEditable:false`，按钮 mousedown/click 阻止冒泡避免抢光标；
+- 生命周期：
+  - 开始（`confirmStartFocus`）→ `ensureActionBlock`；已存在则复用；
+  - 结束/丢弃 → `removeActionBlock`；撤销结束 → `restoreFromRecord` 后 `ensureActionBlock`；
+  - 插件 unload → `removeAllActionBlocks`，避免渲染器卸载后笔记里出现未知类型块；重新启用后 `scheduleActionBlockReconcile` 等编辑器可用时补建；
+  - 异常退出留下的孤儿块：渲染器显示「专注已结束」兜底，另有命令 `专注：清理残留的专注按钮块` 扫描 `orca.state.blocks` 清理；
+- converter：plain / markdown / html 均输出空串，避免导出/复制带上操作块；
+- 与浮层方案相比：位置由文档布局决定（不漂移、无需定位代码），但会改变文档结构（多一个子块），父块折叠时不可见，且操作块的插入/删除会进撤销栈。
 
 ### 5.4 退出自动暂停
 

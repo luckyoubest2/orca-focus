@@ -437,38 +437,38 @@ export const HISTORY_CSS = `
 @keyframes of-spin { to { transform: rotate(360deg); } }
 `
 
-/** Floating 「备注 / 暂停·继续 / 结束」 toolbar at the end of focused blocks. */
-export const BLOCK_ACTIONS_CSS = `
-.of-actions-host {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  pointer-events: none;
-}
+/** Real child-block action row (approach B: no floating overlay). */
+export const ACTION_BLOCK_CSS = `
+.of-repr-focus-actions .orca-repr-main { min-height: 0; }
+.of-repr-focus-actions-content { display: flex; align-items: center; }
 
-.of-block-actions {
-  position: absolute;
-  display: flex;
+.of-focus-action-row {
+  display: inline-flex;
   align-items: center;
-  gap: 1px;
-  padding: 1px 2px;
+  gap: 4px;
+  padding: 1px 8px;
   border: 1px solid var(--orca-color-border);
   border-radius: 999px;
-  background: var(--orca-color-bg-1);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .14);
-  pointer-events: auto;
-  opacity: .92;
-  transition: opacity .12s ease-in-out;
+  background: var(--orca-color-bg-2);
+  color: var(--orca-color-text-2);
+  font-size: var(--orca-fontsize-xs);
+  line-height: 1.6;
+  user-select: none;
 }
 
-.of-block-actions:hover { opacity: 1; }
+.of-focus-action-row-stale { opacity: .75; }
 
-.of-block-action {
+.of-focus-action-state { color: var(--orca-color-primary-5); }
+.of-focus-action-elapsed { font-variant-numeric: tabular-nums; }
+.of-focus-action-sep { width: 1px; height: 12px; background: var(--orca-color-border); margin: 0 2px; }
+.of-focus-action-hint { color: var(--orca-color-text-3, var(--orca-color-text-2)); }
+
+.of-focus-action-btn {
   border: none;
   background: transparent;
   color: var(--orca-color-text-2);
   cursor: pointer;
-  padding: 2px 5px;
+  padding: 1px 4px;
   border-radius: 999px;
   font-size: 12px;
   line-height: 1;
@@ -477,8 +477,8 @@ export const BLOCK_ACTIONS_CSS = `
   justify-content: center;
 }
 
-.of-block-action:hover {
+.of-focus-action-btn:hover {
   color: var(--orca-color-text-1);
-  background: var(--orca-color-bg-2);
+  background: var(--orca-color-bg-1);
 }
 `

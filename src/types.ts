@@ -23,6 +23,8 @@ export interface FocusTimer {
   startNote: string
   /** Journal block id of the optional "start entry", when a start note was written. */
   startLogBlockId: DbId | null
+  /** Custom action block inserted under the focused block while the timer is active. */
+  actionBlockId: DbId | null
   /** Epoch ms of the last persistence write while running (crash recovery). */
   lastSeenAt: number
   /** Set when the timer was paused automatically because the app quit. */

@@ -1,5 +1,6 @@
 import type { DbId } from "./orca"
 import { blockExists, blockTitle, ensureBlock, getMirrorId } from "./data/blocks"
+import { ensureActionBlock, removeActionBlock } from "./data/actionBlock"
 import { deleteEntry, writeEndEntry, writeNoteEntry, writeStartEntry } from "./data/log"
 import { openFocusPanel, editorPanelId } from "./lib/panels"
 import { formatDurationHuman } from "./lib/util"
@@ -21,6 +22,7 @@ import {
   pushEndUndo,
   removeTimer,
   restoreTimer,
+  discardTimer,
   resumeTimer,
   setTimerStartLog,
   store,
@@ -72,6 +74,11 @@ export async function confirmStartFocus(note: string): Promise<void> {
   }
   const timer = createTimer(dialog.blockId, blockTitle(block) || dialog.title, note)
   ensureSessionId(timer)
+  try {
+    await ensureActionBlock(timer)
+  } catch (e) {
+    console.warn("[orca-focus] failed to insert action block on start", e)
+  }
   if (getSettings().autoOpenPanel) openFocusPanel()
   try {
     const blockId = await writeStartEntry(timer)
@@ -188,6 +195,11 @@ export async function confirmEndFocus(summary: string): Promise<void> {
 
   try {
     const result = await writeEndEntry(timer, endMs, summary)
+    try {
+      await removeActionBlock(timer)
+    } catch (e) {
+      console.warn("[orca-focus] failed to remove action block on end", e)
+    }
     removeTimer(timer.id)
     const record: EndUndoRecord = {
       timer: snapshot,
@@ -212,7 +224,7 @@ export async function confirmEndFocus(summary: string): Promise<void> {
   }
 }
 
-function restoreFromRecord(record: EndUndoRecord): void {
+function restoreFromRecord(record: EndUndoRecord): FocusTimer {
   const restored: FocusTimer = {
     ...snapshotTimer(record.timer),
     status: record.wasRunning ? "running" : "paused",
@@ -220,8 +232,18 @@ function restoreFromRecord(record: EndUndoRecord): void {
     accumulatedMs: record.elapsedAtEnd,
     lastSeenAt: Date.now(),
     pausedByQuit: false,
+    actionBlockId: null,
   }
   restoreTimer(restored)
+  return restored
+}
+
+/** Discard a timer without writing a journal entry (also removes its action block). */
+export async function discardFocus(timerId: string): Promise<void> {
+  const timer = getTimer(timerId)
+  if (timer == null) return
+  await removeActionBlock(timer)
+  discardTimer(timer.id)
 }
 
 /**
@@ -240,7 +262,12 @@ export async function undoLastEnd(): Promise<boolean> {
   } catch (error) {
     console.warn("[orca-focus] failed to delete end entry while undoing", error)
   }
-  restoreFromRecord(record)
+  const restored = restoreFromRecord(record)
+  try {
+    await ensureActionBlock(restored)
+  } catch (e) {
+    console.warn("[orca-focus] failed to re-create action block on undo", e)
+  }
   bumpHistoryVersion()
   orca.notify("success", `已撤销结束：${record.timer.title}`, { title: "专注" })
   return true
@@ -268,7 +295,8 @@ export function installUndoWatcher(): void {
         if (current == null || current.at !== recordAt) return
         if (current.endBlockId != null && (await blockExists(current.endBlockId))) continue
         clearEndUndo()
-        restoreFromRecord(current)
+        const restored = restoreFromRecord(current)
+        void ensureActionBlock(restored)
         orca.notify("info", `已撤销结束，计时继续：${current.timer.title}`, { title: "专注" })
         return
       }

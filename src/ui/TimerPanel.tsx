@@ -1,4 +1,5 @@
 import React from "react"
+import { discardFocus } from "../actions"
 import { journalDate } from "../data/journal"
 import { liveTitle } from "../data/log"
 import { ensureBlocks } from "../data/blocks"
@@ -8,7 +9,6 @@ import {
   openEndDialog,
   pauseTimer,
   resumeTimer,
-  discardTimer,
   elapsedMs,
   openNoteDialog,
   setNotice,
@@ -90,7 +90,7 @@ function TimerCard({ timerId }: { timerId: string }) {
               setConfirmDiscard(true)
               return
             }
-            discardTimer(timer.id)
+            void discardFocus(timer.id)
           }}
         >
           <i className={`ti ${confirmDiscard ? "ti-trash-x" : "ti-trash"}`} />
