@@ -14,6 +14,7 @@ import {
   setNotice,
   useFocusStore,
 } from "../store"
+import FocusHistoryView from "./HistoryView"
 
 const { Button } = orca.components as any
 
@@ -99,12 +100,20 @@ function TimerCard({ timerId }: { timerId: string }) {
   )
 }
 
-/** Custom right-side panel that holds every active timer. */
-export default function FocusPanel({ panelId }: { panelId: string }) {
+type PanelTab = "timers" | "history"
+
+/** Custom right-side panel: active timers + aggregated focus history. */
+export default function FocusPanel({ panelId, tab }: { panelId: string; tab?: string }) {
   const snapshot = useFocusStore()
   const timers = snapshot.timers
   const running = timers.filter((timer) => timer.status === "running")
   const totalElapsed = timers.reduce((sum, timer) => sum + elapsedMs(timer, snapshot.now), 0)
+  const [activeTab, setActiveTab] = React.useState<PanelTab>(tab === "history" ? "history" : "timers")
+
+  React.useEffect(() => {
+    if (tab === "history") setActiveTab("history")
+    else if (tab === "timers") setActiveTab("timers")
+  }, [tab])
 
   React.useEffect(() => {
     const ids = timers.map((timer) => timer.blockId)
@@ -135,40 +144,64 @@ export default function FocusPanel({ panelId }: { panelId: string }) {
         </div>
       </div>
 
-      {timers.length > 0 && (
-        <div className="of-panel-summary">
-          共 {timers.length} 个计时器 · 累计 {formatDurationHuman(totalElapsed)}
-        </div>
-      )}
+      <div className="of-tabs">
+        <button
+          className={`of-tab ${activeTab === "timers" ? "of-tab-active" : ""}`}
+          onClick={() => setActiveTab("timers")}
+        >
+          <i className="ti ti-timer" />
+          <span>计时</span>
+          {running.length > 0 && <span className="of-tab-count">{running.length}</span>}
+        </button>
+        <button
+          className={`of-tab ${activeTab === "history" ? "of-tab-active" : ""}`}
+          onClick={() => setActiveTab("history")}
+        >
+          <i className="ti ti-history" />
+          <span>历史</span>
+        </button>
+      </div>
 
-      {snapshot.notice != null && (
-        <div className="of-notice">
-          <span>{snapshot.notice}</span>
-          <button className="of-notice-close" title="知道了" onClick={() => setNotice(null)}>
-            <i className="ti ti-x" />
-          </button>
-        </div>
-      )}
-
-      <div className="of-panel-list">
-        {timers.length === 0 ? (
-          <div className="of-empty">
-            <i className="ti ti-clock-play of-empty-icon" />
-            <div className="of-empty-title">还没有专注计时</div>
-            <div className="of-empty-text">
-              在任意块左侧的小点上右键 → 插件命令 → 开始专注
+      {activeTab === "timers" ? (
+        <>
+          {timers.length > 0 && (
+            <div className="of-panel-summary">
+              共 {timers.length} 个计时器 · 累计 {formatDurationHuman(totalElapsed)}
             </div>
-          </div>
-        ) : (
-          [...running, ...timers.filter((timer) => timer.status !== "running")].map((timer) => (
-            <TimerCard key={timer.id} timerId={timer.id} />
-          ))
-        )}
-      </div>
+          )}
 
-      <div className="of-panel-footer">
-        右键小点 → 插件命令 → 开始专注；结束记录会写到今日「工作日志」。
-      </div>
+          {snapshot.notice != null && (
+            <div className="of-notice">
+              <span>{snapshot.notice}</span>
+              <button className="of-notice-close" title="知道了" onClick={() => setNotice(null)}>
+                <i className="ti ti-x" />
+              </button>
+            </div>
+          )}
+
+          <div className="of-panel-list">
+            {timers.length === 0 ? (
+              <div className="of-empty">
+                <i className="ti ti-clock-play of-empty-icon" />
+                <div className="of-empty-title">还没有专注计时</div>
+                <div className="of-empty-text">
+                  在任意块左侧的小点上右键 → 插件命令 → 开始专注
+                </div>
+              </div>
+            ) : (
+              [...running, ...timers.filter((timer) => timer.status !== "running")].map((timer) => (
+                <TimerCard key={timer.id} timerId={timer.id} />
+              ))
+            )}
+          </div>
+
+          <div className="of-panel-footer">
+            右键小点 → 插件命令 → 开始专注；结束记录会写到今日「工作日志」。
+          </div>
+        </>
+      ) : (
+        <FocusHistoryView />
+      )}
     </div>
   )
 }

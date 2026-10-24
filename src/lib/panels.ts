@@ -3,17 +3,24 @@ import { findEditorPanel, findPanelByView, findPanelById, editorOfPanel } from "
 
 export { findPanelByView } from "./editor"
 
-/** Register the custom timer panel view type as a right-side panel. */
-export function openFocusPanel(): string | null {
+/** Open (or focus) the custom focus panel; `args` are merged into its viewArgs. */
+export function openFocusPanel(args?: Record<string, any>): string | null {
   const existing = findPanelByView(PANEL_VIEW)
   if (existing) {
+    try {
+      if (args != null && Object.keys(args).length > 0) {
+        orca.nav.replace(PANEL_VIEW, { ...existing.viewArgs, ...args }, existing.id)
+      }
+    } catch (e) {
+      console.warn("[orca-focus] failed to update focus panel args", e)
+    }
     orca.nav.switchFocusTo(existing.id)
     return existing.id
   }
   try {
     const id = orca.nav.addTo(orca.state.activePanel, "right", {
       view: PANEL_VIEW,
-      viewArgs: {},
+      viewArgs: args ?? {},
       viewState: {},
     } as any)
     return id ?? null

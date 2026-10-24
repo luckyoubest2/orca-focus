@@ -6,6 +6,7 @@ import { getSettings } from "../lib/settings"
 export const TAG_PROP_START = "开始时间"
 export const TAG_PROP_END = "结束时间"
 export const TAG_PROP_TARGET = "目标"
+export const TAG_PROP_SESSION = "专注ID"
 /** Removed in v0.2; kept only so an existing tag block can be migrated. */
 export const LEGACY_TAG_PROPS = ["时长"]
 
@@ -41,6 +42,7 @@ async function ensureTagProperties(tagId: DbId): Promise<void> {
     { name: TAG_PROP_START, type: 5, typeArgs: { subType: "datetime" } },
     { name: TAG_PROP_END, type: 5, typeArgs: { subType: "datetime" } },
     { name: TAG_PROP_TARGET, type: 2, typeArgs: {} },
+    { name: TAG_PROP_SESSION, type: 1 },
   ]
   const missing = wanted.filter((prop) => !existingNames.has(prop.name))
   if (missing.length === 0) return
@@ -117,6 +119,8 @@ export function getCachedTag(): { id: DbId | null; name: string } | null {
 }
 
 export interface TagDataOptions {
+  /** Focus session id (shared by start / note / end entries). */
+  sessionId?: string
   /** Session start time (epoch ms); omitted for mid-session notes. */
   startMs?: number
   /** Session end time (epoch ms); omitted for start entries / mid-session notes. */
@@ -139,6 +143,9 @@ export function buildTagData(opts: TagDataOptions): BlockRefData[] {
   }
   if (opts.targetRefId != null) {
     data.push({ name: TAG_PROP_TARGET, type: 2, value: [opts.targetRefId] })
+  }
+  if (opts.sessionId) {
+    data.push({ name: TAG_PROP_SESSION, type: 1, value: opts.sessionId })
   }
   return data
 }

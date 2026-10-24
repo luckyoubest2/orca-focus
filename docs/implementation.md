@@ -125,6 +125,17 @@ src/
   插件 unload 时移除全部标记。
 - 暂停/结束的计时器不显示。
 
+### 5.3c 专注 ID 与历史汇总（v0.5）
+
+- 每次开始生成 `sessionId`（`YYYYMMDD-HHmm-xxxx`），存进 `FocusTimer.sessionId` 并持久化；
+- 开始/中间备注/结束条都通过标签数据写 `专注ID`（Text 类型标签属性）；标签 schema 迁移时自动补上该属性；
+- 历史数据：`get-blocks-with-tags([tagName])` 查询所有记录 → 用每条 tag ref 的 data 读 `开始时间/结束时间/目标/专注ID`；
+- 目标块通过 RefData 引用 id → `block.refs.find(r=>r.id===refId).to` 解析；
+- 按 `专注ID` 分组；单次时长 = 组内最早 `开始时间` → 最晚 `结束时间`（首尾自动算）；没有 ID 的旧记录单条展示；
+- 累计：所有有起止的会话时长求和；今日累计按开始时间的本地日期过滤；面板 tab 里展示；
+- 历史 tab 在 `store.historyVersion` 变化（开始/结束/备注/撤销写入成功）时自动重查，也可手动刷新；
+- 命令「专注：打开专注历史」通过 `openFocusPanel({tab:"history"})` 打开面板并切到历史 tab。
+
 ### 5.4 退出自动暂停
 
 - 运行期每 5s 把 running 计时器的 `lastSeenAt` 写进 localStorage（只写本地，不写插件数据，避免 DB 抖动）；

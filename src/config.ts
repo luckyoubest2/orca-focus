@@ -10,6 +10,7 @@ export const PLUGIN_ID = "orca-focus"
 export const PANEL_VIEW = "orca-focus.focusPanel"
 
 export const CMD_OPEN_PANEL = "orca-focus.openPanel"
+export const CMD_OPEN_HISTORY = "orca-focus.openHistory"
 export const CMD_START_CURRENT = "orca-focus.startCurrent"
 export const CMD_TOGGLE_CURRENT = "orca-focus.toggleCurrent"
 export const CMD_END_CURRENT = "orca-focus.endCurrent"

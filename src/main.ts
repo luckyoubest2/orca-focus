@@ -3,6 +3,7 @@ import {
   BLOCK_MENU_ID,
   CMD_END_CURRENT,
   CMD_NOTE_CURRENT,
+  CMD_OPEN_HISTORY,
   CMD_OPEN_PANEL,
   CMD_START_CURRENT,
   CMD_TOGGLE_CURRENT,
@@ -24,10 +25,10 @@ import {
 } from "./actions"
 import { invalidateTargetCache } from "./data/log"
 import { invalidateTagCache } from "./data/tag"
-import { findPanelByView, toggleFocusPanel } from "./lib/panels"
+import { findPanelByView, openFocusPanel, toggleFocusPanel } from "./lib/panels"
 import { disposeFocusIndicators, installFocusIndicators } from "./lib/blockIndicators"
 import { getSettings, registerSettings } from "./lib/settings"
-import { BLOCK_INDICATOR_CSS, FOCUS_CSS, focusTagCss } from "./styles"
+import { BLOCK_INDICATOR_CSS, FOCUS_CSS, HISTORY_CSS, focusTagCss } from "./styles"
 import {
   closeDialog,
   disposeStore,
@@ -79,12 +80,12 @@ export async function load(pluginName: string): Promise<void> {
 
   await registerSettings(pluginName)
   try {
-    orca.themes.injectCSS(FOCUS_CSS + BLOCK_INDICATOR_CSS + focusTagCss(getSettings().tagName), STYLE_ROLE)
+    orca.themes.injectCSS(FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + focusTagCss(getSettings().tagName), STYLE_ROLE)
   } catch (e) {
     console.warn("[orca-focus] injectCSS failed, falling back to <style>", e)
     const style = document.createElement("style")
     style.id = `${STYLE_ROLE}-styles`
-    style.textContent = FOCUS_CSS + BLOCK_INDICATOR_CSS + focusTagCss(getSettings().tagName)
+    style.textContent = FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + focusTagCss(getSettings().tagName)
     document.head.appendChild(style)
   }
 
@@ -113,6 +114,14 @@ export async function load(pluginName: string): Promise<void> {
       toggleFocusPanel()
     },
     "专注：打开/关闭专注计时面板",
+  )
+
+  orca.commands.registerCommand(
+    CMD_OPEN_HISTORY,
+    () => {
+      openFocusPanel({ tab: "history" })
+    },
+    "专注：打开专注历史",
   )
 
   orca.commands.registerEditorCommand(
@@ -213,6 +222,7 @@ export async function unload(): Promise<void> {
   }
 
   orca.commands.unregisterCommand(CMD_OPEN_PANEL)
+  orca.commands.unregisterCommand(CMD_OPEN_HISTORY)
   orca.commands.unregisterEditorCommand(CMD_START_CURRENT)
   orca.commands.unregisterEditorCommand(CMD_TOGGLE_CURRENT)
   orca.commands.unregisterEditorCommand(CMD_END_CURRENT)

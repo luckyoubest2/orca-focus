@@ -298,3 +298,142 @@ export const BLOCK_INDICATOR_CSS = `
   50% { opacity: .35; }
 }
 `
+
+/** Tabs + history view styles. */
+export const HISTORY_CSS = `
+.of-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid var(--orca-color-border);
+  flex: 0 0 auto;
+}
+
+.of-tab {
+  border: none;
+  background: transparent;
+  color: var(--orca-color-text-2);
+  font-family: inherit;
+  font-size: var(--orca-fontsize-sm);
+  padding: 6px 10px;
+  border-radius: var(--orca-radius-sm) var(--orca-radius-sm) 0 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 2px solid transparent;
+}
+
+.of-tab:hover { color: var(--orca-color-text-1); background: var(--orca-color-bg-2); }
+.of-tab-active { color: var(--orca-color-primary-5); border-bottom-color: var(--orca-color-primary-5); }
+
+.of-tab-count {
+  background: var(--orca-color-primary-5);
+  color: var(--orca-color-white);
+  border-radius: 999px;
+  font-size: var(--orca-fontsize-xs);
+  padding: 0 5px;
+}
+
+.of-history { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+
+.of-history-stats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--orca-color-border);
+  flex: 0 0 auto;
+}
+
+.of-history-stat { display: flex; flex-direction: column; gap: 1px; }
+.of-history-stat-label { color: var(--orca-color-text-2); font-size: var(--orca-fontsize-xs); }
+.of-history-stat-value {
+  font-weight: var(--orca-fontweight-md);
+  font-size: var(--orca-fontsize-sm);
+  font-variant-numeric: tabular-nums;
+}
+.of-history-refresh { margin-left: auto; }
+
+.of-history-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 10px 12px 12px; }
+.of-history-day { margin-bottom: 14px; }
+.of-history-day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 2px 2px 6px;
+  color: var(--orca-color-text-2);
+  font-size: var(--orca-fontsize-xs);
+}
+.of-history-day-label { color: var(--orca-color-text-1); font-weight: var(--orca-fontweight-sm); }
+
+.of-history-session {
+  border: 1px solid var(--orca-color-border);
+  border-radius: var(--orca-radius-md);
+  background: var(--orca-color-bg-2);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.of-history-session-running { border-left: 3px solid var(--orca-color-primary-5); }
+.of-history-session-head { display: flex; align-items: center; gap: 8px; }
+
+.of-history-target {
+  font-weight: var(--orca-fontweight-sm);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+.of-history-target:hover { text-decoration: underline; }
+
+.of-history-range {
+  color: var(--orca-color-text-2);
+  font-size: var(--orca-fontsize-xs);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+.of-history-duration {
+  margin-left: auto;
+  font-weight: var(--orca-fontweight-md);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.of-history-badge {
+  background: var(--orca-color-primary-5);
+  color: var(--orca-color-white);
+  border-radius: 999px;
+  font-size: var(--orca-fontsize-xs);
+  padding: 0 6px;
+  flex: 0 0 auto;
+}
+.of-history-badge-legacy { background: var(--orca-color-gray-3, var(--orca-color-text-2)); }
+
+.of-history-entries {
+  margin-top: 6px;
+  border-top: 1px dashed var(--orca-color-border);
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.of-history-entry {
+  display: flex;
+  gap: 6px;
+  font-size: var(--orca-fontsize-xs);
+  color: var(--orca-color-text-2);
+  cursor: pointer;
+  padding: 1px 2px;
+  border-radius: var(--orca-radius-sm);
+}
+.of-history-entry:hover { background: var(--orca-color-bg-1); color: var(--orca-color-text-1); }
+.of-history-entry-time { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.of-history-entry-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.of-history-error { color: var(--orca-color-dangerous-5, var(--orca-color-text-1)); font-size: var(--orca-fontsize-xs); padding: 6px 2px; }
+.of-history-loading { color: var(--orca-color-text-2); font-size: var(--orca-fontsize-xs); padding: 12px 2px; }
+
+.of-spin { animation: of-spin 1s linear infinite; }
+@keyframes of-spin { to { transform: rotate(360deg); } }
+`

@@ -206,7 +206,8 @@ export function writeStartEntry(timer: FocusTimer): Promise<DbId> {
       sourceBlockId: alive,
       tagName: tag.name,
       inlineRef: inline,
-      tagDataFactory: (targetRefId) => buildTagData({ startMs: timer.createdAt, targetRefId }),
+      tagDataFactory: (targetRefId) =>
+        buildTagData({ startMs: timer.createdAt, targetRefId, sessionId: timer.sessionId }),
     })
   })
 }
@@ -248,7 +249,7 @@ export function writeEndEntry(
       tagName: tag.name,
       inlineRef: inline,
       tagDataFactory: (targetRefId) =>
-        buildTagData({ startMs: timer.createdAt, endMs, targetRefId }),
+        buildTagData({ startMs: timer.createdAt, endMs, targetRefId, sessionId: timer.sessionId }),
     })
     return { blockId, elapsedMs: elapsed }
   })
@@ -270,7 +271,7 @@ export function writeNoteEntry(timer: FocusTimer, nowMs: number, note: string): 
       text,
       sourceBlockId: alive,
       tagName: tag.name,
-      tagDataFactory: (targetRefId) => buildTagData({ targetRefId }),
+      tagDataFactory: (targetRefId) => buildTagData({ targetRefId, sessionId: timer.sessionId }),
     })
   })
 }

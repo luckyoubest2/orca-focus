@@ -5,10 +5,12 @@ import { openFocusPanel, editorPanelId } from "./lib/panels"
 import { formatDurationHuman } from "./lib/util"
 import { getSettings } from "./lib/settings"
 import {
+  bumpHistoryVersion,
   clearEndUndo,
   closeDialog,
   createTimer,
   elapsedMs,
+  ensureSessionId,
   getTimer,
   getTimerForBlock,
   openEndDialog,
@@ -69,10 +71,12 @@ export async function confirmStartFocus(note: string): Promise<void> {
     return
   }
   const timer = createTimer(dialog.blockId, blockTitle(block) || dialog.title, note)
+  ensureSessionId(timer)
   if (getSettings().autoOpenPanel) openFocusPanel()
   try {
     const blockId = await writeStartEntry(timer)
     setTimerStartLog(timer.id, blockId)
+    bumpHistoryVersion()
     console.log("[orca-focus] start entry written", blockId)
   } catch (error) {
     console.warn("[orca-focus] start entry write failed", error)
@@ -118,8 +122,10 @@ export async function confirmFocusNote(note: string): Promise<void> {
     orca.notify("info", "没有输入内容，未写入专注备注。", { title: "专注" })
     return
   }
+  ensureSessionId(timer)
   try {
     const blockId = await writeNoteEntry(timer, Date.now(), text)
+    bumpHistoryVersion()
     console.log("[orca-focus] note entry written", blockId)
     orca.notify("success", "已插入专注备注", { title: "专注" })
   } catch (error) {
@@ -173,6 +179,7 @@ export async function confirmEndFocus(summary: string): Promise<void> {
     return
   }
 
+  ensureSessionId(timer)
   const endMs = Date.now()
   const wasRunning = timer.status === "running"
   const elapsedAtEnd = elapsedMs(timer, endMs)
@@ -191,6 +198,7 @@ export async function confirmEndFocus(summary: string): Promise<void> {
       editorPanelId: panelId,
     }
     pushEndUndo(record)
+    bumpHistoryVersion()
     orca.notify("success", `已结束：${snapshot.title}（${formatDurationHuman(elapsedAtEnd)}）`, {
       title: "专注",
       action: () => {
@@ -233,6 +241,7 @@ export async function undoLastEnd(): Promise<boolean> {
     console.warn("[orca-focus] failed to delete end entry while undoing", error)
   }
   restoreFromRecord(record)
+  bumpHistoryVersion()
   orca.notify("success", `已撤销结束：${record.timer.title}`, { title: "专注" })
   return true
 }

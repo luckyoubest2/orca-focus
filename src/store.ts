@@ -7,12 +7,14 @@ import {
 } from "./config"
 import type { DialogState, EndUndoRecord, FocusTimer, PersistedState } from "./types"
 import { getSettings } from "./lib/settings"
-import { uid } from "./lib/util"
+import { makeSessionId, uid } from "./lib/util"
 
 const Valtio = (window as any).Valtio as any
 
 interface StoreState {
   timers: FocusTimer[]
+  /** Bumped whenever a journal entry is written/removed so the history view refreshes. */
+  historyVersion: number
   now: number
   dialog: DialogState | null
   lastEndUndo: EndUndoRecord | null
@@ -22,6 +24,7 @@ interface StoreState {
 
 export const store: StoreState = Valtio.proxy({
   timers: [],
+  historyVersion: 0,
   now: Date.now(),
   dialog: null,
   lastEndUndo: null,
@@ -103,6 +106,10 @@ function normalizeTimer(raw: any): FocusTimer | null {
   const createdAt = Number(raw.createdAt) || Date.now()
   return {
     id: raw.id,
+    sessionId:
+      typeof raw.sessionId === "string" && raw.sessionId.length > 0
+        ? raw.sessionId
+        : makeSessionId(new Date(createdAt)),
     blockId: raw.blockId,
     title: typeof raw.title === "string" ? raw.title : "",
     status,
@@ -290,6 +297,7 @@ export function createTimer(blockId: number, title: string, startNote: string): 
   const now = Date.now()
   const timer: FocusTimer = {
     id: uid(),
+    sessionId: makeSessionId(new Date(now)),
     blockId,
     title,
     status: "running",
@@ -397,6 +405,19 @@ export function setTimerTitle(id: string, title: string): void {
   const timer = getTimer(id)
   if (!timer || !title) return
   timer.title = title
+}
+
+/** Make sure a timer has a session id (old persisted timers may not). */
+export function ensureSessionId(timer: FocusTimer): string {
+  if (typeof timer.sessionId === "string" && timer.sessionId.length > 0) return timer.sessionId
+  timer.sessionId = makeSessionId(new Date(timer.createdAt))
+  saveState()
+  return timer.sessionId
+}
+
+/** Notify the history view that journal entries changed. */
+export function bumpHistoryVersion(): void {
+  store.historyVersion += 1
 }
 
 // --- dialogs ---------------------------------------------------------------

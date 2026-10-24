@@ -94,3 +94,14 @@ export function parseReferenceNameList(raw: string | undefined | null, fallback:
   }
   return out.length > 0 ? out : fallback
 }
+
+/** Readable focus-session id: 20261024-0944-a1b2 (used by 专注ID tag property). */
+export function makeSessionId(base: Date = new Date()): string {
+  const y = base.getFullYear()
+  const m = pad2(base.getMonth() + 1)
+  const d = pad2(base.getDate())
+  const hh = pad2(base.getHours())
+  const mm = pad2(base.getMinutes())
+  const rand = Math.random().toString(36).slice(2, 6)
+  return `${y}${m}${d}-${hh}${mm}-${rand}`
+}

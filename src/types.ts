@@ -6,6 +6,8 @@ export type TimerStatus = "running" | "paused"
 export interface FocusTimer {
   /** Local unique id (stable across persistence reloads). */
   id: string
+  /** Stable focus-session id shared by the start/note/end journal entries. */
+  sessionId: string
   /** Real block id (mirror blocks are resolved to their target). */
   blockId: DbId
   /** Cached display title of the source block. */
