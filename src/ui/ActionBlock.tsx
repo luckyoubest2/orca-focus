@@ -93,6 +93,38 @@ export default function FocusActionBlockRenderer(props: any) {
     sourceBlockId,
     timerId,
   } = props
+  const rootRef = React.useRef<HTMLSpanElement>(null)
+
+  // Scale the action row to the focused block's own line height (headings are
+  // much taller than body text), and publish it as CSS vars on the action block.
+  React.useEffect(() => {
+    const root = rootRef.current
+    if (root == null) return
+    const measure = () => {
+      const actionBlockEl = root.closest(".orca-block") as HTMLElement | null
+      const parentBlockEl = actionBlockEl?.parentElement?.closest(".orca-block") as HTMLElement | null
+      let lineHeight = 0
+      const parentContent = parentBlockEl?.querySelector(
+        ":scope > .orca-repr > .orca-repr-main > .orca-repr-main-content",
+      ) as HTMLElement | null
+      if (parentContent != null) lineHeight = parseFloat(getComputedStyle(parentContent).lineHeight) || 0
+      if (!lineHeight) {
+        const ownContent = root.closest(".orca-repr-main-content") as HTMLElement | null
+        if (ownContent != null) lineHeight = parseFloat(getComputedStyle(ownContent).lineHeight) || 0
+      }
+      const height = Math.max(28, Math.round(lineHeight))
+      const font = Math.max(13, Math.round(height * 0.46))
+      for (const target of [actionBlockEl, root]) {
+        if (target == null) continue
+        ;(target as HTMLElement).style.setProperty("--of-focus-row-height", `${height}px`)
+        ;(target as HTMLElement).style.setProperty("--of-focus-row-font", `${font}px`)
+      }
+    }
+    measure()
+    // The editor sets `--orca-block-line-height` after first paint; measure again.
+    const handle = setTimeout(measure, 220)
+    return () => clearTimeout(handle)
+  }, [])
 
   return (
     <BlockShell
@@ -107,7 +139,11 @@ export default function FocusActionBlockRenderer(props: any) {
       reprClassName="of-repr-focus-actions"
       contentClassName="of-repr-focus-actions-content"
       contentAttrs={{ contentEditable: false }}
-      contentJsx={<ActiveRow timerId={timerId} sourceBlockId={sourceBlockId} />}
+      contentJsx={
+        <span ref={rootRef} className="of-focus-action-root">
+          <ActiveRow timerId={timerId} sourceBlockId={sourceBlockId} />
+        </span>
+      }
     />
   )
 }

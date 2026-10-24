@@ -439,38 +439,91 @@ export const HISTORY_CSS = `
 
 /** Real child-block action row (approach B: no floating overlay). */
 export const ACTION_BLOCK_CSS = `
-.of-repr-focus-actions .orca-repr-main { min-height: 0; }
-.of-repr-focus-actions-content { display: flex; align-items: center; }
+/* Make the action child block read as one line attached to the focused block.
+   --of-focus-row-height / --of-focus-row-font are set by ui/ActionBlock.tsx from
+   the focused block's own line height so headings get a proportionally bigger bar. */
+.of-repr-focus-actions { margin: 1px 0 3px; }
+
+.of-repr-focus-actions .orca-repr-main {
+  display: flex;
+  align-items: center;
+  min-height: calc(var(--of-focus-row-height, 28px) + 4px);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.of-repr-focus-actions-content {
+  display: flex;
+  align-items: center;
+  min-height: var(--of-focus-row-height, 28px);
+  padding: 2px 0;
+  line-height: 1;
+}
+
+/* The action block does not need its own bullet / folding caret. */
+.orca-block:has(> .orca-repr.of-repr-focus-actions) .orca-block-handle,
+.orca-block:has(> .orca-repr.of-repr-focus-actions) .orca-block-folding-handle {
+  visibility: hidden;
+}
+
+.of-focus-action-root {
+  display: inline-flex;
+  align-items: center;
+}
 
 .of-focus-action-row {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 8px;
+  gap: var(--orca-spacing-xs, 4px);
+  min-height: var(--of-focus-row-height, 28px);
+  padding: 0 calc(var(--of-focus-row-font, 14px) * 0.5) 0 calc(var(--of-focus-row-font, 14px) * 0.8);
   border: 1px solid var(--orca-color-border);
   border-radius: 999px;
   background: var(--orca-color-bg-2);
   color: var(--orca-color-text-2);
-  font-size: var(--orca-fontsize-xs);
-  line-height: 1.6;
+  font-family: var(--orca-fontfamily-ui);
+  font-size: var(--of-focus-row-font, 14px);
+  line-height: 1;
   user-select: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
 }
 
 .of-focus-action-row-stale { opacity: .75; }
 
-.of-focus-action-state { color: var(--orca-color-primary-5); }
-.of-focus-action-elapsed { font-variant-numeric: tabular-nums; }
-.of-focus-action-sep { width: 1px; height: 12px; background: var(--orca-color-border); margin: 0 2px; }
-.of-focus-action-hint { color: var(--orca-color-text-3, var(--orca-color-text-2)); }
+.of-focus-action-state {
+  color: var(--orca-color-primary-5);
+  font-size: calc(var(--of-focus-row-font, 14px) * 1.15);
+  margin-right: 2px;
+}
+
+.of-focus-action-elapsed {
+  min-width: calc(var(--of-focus-row-font, 14px) * 3.4);
+  font-size: var(--of-focus-row-font, 14px);
+  font-weight: var(--orca-fontweight-lg, 500);
+  font-variant-numeric: tabular-nums;
+  color: var(--orca-color-text-1);
+  letter-spacing: .02em;
+}
+
+.of-focus-action-sep {
+  width: 1px;
+  height: calc(var(--of-focus-row-height, 28px) * 0.55);
+  background: var(--orca-color-border);
+  margin: 0 calc(var(--of-focus-row-font, 14px) * 0.25);
+}
+
+.of-focus-action-hint { color: var(--orca-color-text-2); font-size: calc(var(--of-focus-row-font, 14px) * 0.85); }
 
 .of-focus-action-btn {
   border: none;
   background: transparent;
   color: var(--orca-color-text-2);
   cursor: pointer;
-  padding: 1px 4px;
-  border-radius: 999px;
-  font-size: 12px;
+  width: min(34px, calc(var(--of-focus-row-height, 28px) - 4px));
+  height: min(34px, calc(var(--of-focus-row-height, 28px) - 4px));
+  padding: 0;
+  border-radius: 50%;
+  font-size: calc(var(--of-focus-row-font, 14px) * 1.05);
   line-height: 1;
   display: inline-flex;
   align-items: center;
