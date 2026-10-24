@@ -1,6 +1,6 @@
 {
   "name": "orca-focus",
-  "version": "0.6.1",
+  "version": "0.6.0",
   "description": "Orca Note focus timer: start a focus session from any block's handle menu, log start/end entries into today's journal, and manage all timers in a dedicated panel.",
   "type": "module",
   "scripts": {

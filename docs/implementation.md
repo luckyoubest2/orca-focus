@@ -142,9 +142,8 @@ src/
 - 不往阅读 DOM / contentEditable 里插节点（避免污染复制/撤销/导出），改为**固定定位浮层**：
   - 挂一个 `position: fixed; inset: 0; pointer-events: none` 的 host 到 body，React root 渲染 `BlockActionsLayer`；
   - 对每个 active timer 的块，查 `.orca-block[data-id]` / `[data-mirror-id]`（镜像也支持），拿 `.orca-repr-main-content`；
-  - 优先复用 Orca 右侧的引用数量槽位：找到 `.orca-block-ref-count-marker`（`.orca-repr` 的绝对定位子元素），用它的 rect 把操作条右对齐放在同一位置；同时给持有计时器的块加 `of-block-has-timer` class，CSS 隐藏该块的引用数量标记，计时结束后移除 class 自动恢复；
-  - 没有引用数量标记时（新块还没有 backref）退化：用 `Range.getClientRects()` 取最后一段文字的 rect，把操作条放在 `rect.right + 6`、垂直居中，并夹在内容框内；
-  - 滚动（capture）、resize、store 变更时 rAF 节流重算；600ms 轮询兜底；对比 item 列表避免无谓渲染；item 带 align 标记，用 `translateX(-100%)` 实现右对齐，无需测量操作条实际宽度；
+  - 用 `Range.getClientRects()` 取最后一段文字的 rect，把操作条放在 `rect.right + 6`、垂直居中，并夹在内容框内；
+  - 滚动（capture）、resize、store 变更时 rAF 节流重算；600ms 轮询兜底；对比 item 列表避免无谓渲染；
   - 按钮 mousedown/click 都 preventDefault+stopPropagation，避免抢编辑器光标；备注/暂停继续/结束复用现有 action 与弹窗；
   - 无 active timer 时组件返回 null；插件 unload 时卸载 root 并移除 host。
 
