@@ -136,6 +136,17 @@ src/
 - 历史 tab 在 `store.historyVersion` 变化（开始/结束/备注/撤销写入成功）时自动重查，也可手动刷新；
 - 命令「专注：打开专注历史」通过 `openFocusPanel({tab:"history"})` 打开面板并切到历史 tab。
 
+### 5.3d 块末尾悬浮操作条（v0.6）
+
+- 需求：计时中的块，在文字末尾直接给出「备注 / 暂停·继续 / 结束」三个按钮；
+- 不往阅读 DOM / contentEditable 里插节点（避免污染复制/撤销/导出），改为**固定定位浮层**：
+  - 挂一个 `position: fixed; inset: 0; pointer-events: none` 的 host 到 body，React root 渲染 `BlockActionsLayer`；
+  - 对每个 active timer 的块，查 `.orca-block[data-id]` / `[data-mirror-id]`（镜像也支持），拿 `.orca-repr-main-content`；
+  - 用 `Range.getClientRects()` 取最后一段文字的 rect，把操作条放在 `rect.right + 6`、垂直居中，并夹在内容框内；
+  - 滚动（capture）、resize、store 变更时 rAF 节流重算；600ms 轮询兜底；对比 item 列表避免无谓渲染；
+  - 按钮 mousedown/click 都 preventDefault+stopPropagation，避免抢编辑器光标；备注/暂停继续/结束复用现有 action 与弹窗；
+  - 无 active timer 时组件返回 null；插件 unload 时卸载 root 并移除 host。
+
 ### 5.4 退出自动暂停
 
 - 运行期每 5s 把 running 计时器的 `lastSeenAt` 写进 localStorage（只写本地，不写插件数据，避免 DB 抖动）；

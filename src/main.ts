@@ -8,6 +8,7 @@ import {
   CMD_START_CURRENT,
   CMD_TOGGLE_CURRENT,
   CMD_UNDO_END,
+  BLOCK_ACTIONS_HOST_ID,
   DIALOG_HOST_ID,
   HEADBAR_ID,
   PANEL_VIEW,
@@ -28,7 +29,7 @@ import { invalidateTagCache } from "./data/tag"
 import { findPanelByView, openFocusPanel, toggleFocusPanel } from "./lib/panels"
 import { disposeFocusIndicators, installFocusIndicators } from "./lib/blockIndicators"
 import { getSettings, registerSettings } from "./lib/settings"
-import { BLOCK_INDICATOR_CSS, FOCUS_CSS, HISTORY_CSS, focusTagCss } from "./styles"
+import { BLOCK_ACTIONS_CSS, BLOCK_INDICATOR_CSS, FOCUS_CSS, HISTORY_CSS, focusTagCss } from "./styles"
 import {
   closeDialog,
   disposeStore,
@@ -37,6 +38,7 @@ import {
   pauseAllRunning,
   store,
 } from "./store"
+import { mountBlockActions } from "./ui/BlockActions"
 import { DialogHost } from "./ui/dialogs"
 import FocusChip from "./ui/FocusChip"
 import FocusPanel from "./ui/TimerPanel"
@@ -44,6 +46,8 @@ import { renderBlockMenu } from "./ui/blockMenu"
 
 let dialogRoot: { render: (node: React.ReactNode) => void; unmount: () => void } | null = null
 let dialogHostEl: HTMLElement | null = null
+let actionsHost: { render: (node: React.ReactNode) => void; unmount: () => void; el: HTMLElement } | null =
+  null
 
 function mountDialogs(): void {
   if (dialogHostEl != null) return
@@ -54,6 +58,21 @@ function mountDialogs(): void {
   const createRoot = (window as any).createRoot as (node: Element) => any
   dialogRoot = createRoot(el)
   dialogRoot!.render(React.createElement(DialogHost))
+}
+
+function mountActions(): void {
+  if (actionsHost != null) return
+  actionsHost = mountBlockActions(BLOCK_ACTIONS_HOST_ID)
+}
+
+function unmountActions(): void {
+  try {
+    actionsHost?.unmount()
+  } catch (e) {
+    console.warn("[orca-focus] actions unmount failed", e)
+  }
+  actionsHost?.el.remove()
+  actionsHost = null
 }
 
 function unmountDialogs(): void {
@@ -80,16 +99,17 @@ export async function load(pluginName: string): Promise<void> {
 
   await registerSettings(pluginName)
   try {
-    orca.themes.injectCSS(FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + focusTagCss(getSettings().tagName), STYLE_ROLE)
+    orca.themes.injectCSS(FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + BLOCK_ACTIONS_CSS + focusTagCss(getSettings().tagName), STYLE_ROLE)
   } catch (e) {
     console.warn("[orca-focus] injectCSS failed, falling back to <style>", e)
     const style = document.createElement("style")
     style.id = `${STYLE_ROLE}-styles`
-    style.textContent = FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + focusTagCss(getSettings().tagName)
+    style.textContent = FOCUS_CSS + BLOCK_INDICATOR_CSS + HISTORY_CSS + BLOCK_ACTIONS_CSS + focusTagCss(getSettings().tagName)
     document.head.appendChild(style)
   }
 
   mountDialogs()
+  mountActions()
 
   const init = await initStore()
 
@@ -240,6 +260,7 @@ export async function unload(): Promise<void> {
     console.warn("[orca-focus] headbar unregister failed", e)
   }
 
+  unmountActions()
   unmountDialogs()
   try {
     orca.themes.removeCSS(STYLE_ROLE)

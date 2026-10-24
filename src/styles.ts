@@ -436,3 +436,49 @@ export const HISTORY_CSS = `
 .of-spin { animation: of-spin 1s linear infinite; }
 @keyframes of-spin { to { transform: rotate(360deg); } }
 `
+
+/** Floating 「备注 / 暂停·继续 / 结束」 toolbar at the end of focused blocks. */
+export const BLOCK_ACTIONS_CSS = `
+.of-actions-host {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.of-block-actions {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px 2px;
+  border: 1px solid var(--orca-color-border);
+  border-radius: 999px;
+  background: var(--orca-color-bg-1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .14);
+  pointer-events: auto;
+  opacity: .92;
+  transition: opacity .12s ease-in-out;
+}
+
+.of-block-actions:hover { opacity: 1; }
+
+.of-block-action {
+  border: none;
+  background: transparent;
+  color: var(--orca-color-text-2);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.of-block-action:hover {
+  color: var(--orca-color-text-1);
+  background: var(--orca-color-bg-2);
+}
+`

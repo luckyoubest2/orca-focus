@@ -21,6 +21,7 @@ export const HEADBAR_ID = "orca-focus.headbar"
 export const BLOCK_MENU_ID = "orca-focus.blockMenu"
 export const STYLE_ROLE = "orca-focus"
 export const DIALOG_HOST_ID = "orca-focus-dialog-host"
+export const BLOCK_ACTIONS_HOST_ID = "orca-focus-actions-host"
 
 /** Plugin-data key that mirrors the timer list for durability. */
 export const DATA_KEY_TIMERS = "timers"
