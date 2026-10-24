@@ -90,9 +90,7 @@ function SessionCard({ session }: { session: HistorySession }) {
               title="跳到这条记录"
               onClick={() => jumpTo(entry.blockId)}
             >
-              <span className="of-history-entry-time">
-                {formatClock(entry.startMs ?? entry.createdMs)}
-              </span>
+              {/* 记录正文本身以 HH:mm 开头，这里不再重复显示时间 */}
               <span className="of-history-entry-text">{entry.text || "（空）"}</span>
             </div>
           ))}

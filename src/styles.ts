@@ -428,8 +428,7 @@ export const HISTORY_CSS = `
   border-radius: var(--orca-radius-sm);
 }
 .of-history-entry:hover { background: var(--orca-color-bg-1); color: var(--orca-color-text-1); }
-.of-history-entry-time { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
-.of-history-entry-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.of-history-entry-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .of-history-error { color: var(--orca-color-dangerous-5, var(--orca-color-text-1)); font-size: var(--orca-fontsize-xs); padding: 6px 2px; }
 .of-history-loading { color: var(--orca-color-text-2); font-size: var(--orca-fontsize-xs); padding: 12px 2px; }
