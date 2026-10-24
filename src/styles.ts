@@ -439,6 +439,11 @@ export const HISTORY_CSS = `
 
 /** Floating 「备注 / 暂停·继续 / 结束」 toolbar at the end of focused blocks. */
 export const BLOCK_ACTIONS_CSS = `
+/* While a block has an active focus timer, reuse Orca's right-side backref-count slot. */
+.orca-block.of-block-has-timer .orca-block-ref-count-marker {
+  visibility: hidden !important;
+}
+
 .of-actions-host {
   position: fixed;
   inset: 0;

@@ -89,7 +89,11 @@ export default function BlockActionsLayer() {
           <div
             key={item.key}
             className="of-block-actions"
-            style={{ top: item.top, left: item.left }}
+            style={{
+              top: item.top,
+              left: item.left,
+              transform: item.align === "right" ? "translateX(-100%)" : undefined,
+            }}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <ActionButton
