@@ -15,6 +15,7 @@ import {
   useFocusStore,
 } from "../store"
 import FocusHistoryView from "./HistoryView"
+import { ClosePanelButton, PanelMenuButton } from "./PanelControls"
 
 const { Button } = orca.components as any
 
@@ -128,7 +129,7 @@ export default function FocusPanel({ panelId, tab }: { panelId: string; tab?: st
     <div className="of-panel" data-panel-id={panelId}>
       <div className="of-panel-header">
         <div className="of-panel-title">
-          <i className="ti ti-clock-play" />
+          <i className="ti ti-focus-2" />
           <span>专注</span>
           {running.length > 0 && <span className="of-panel-badge">{running.length} 进行中</span>}
         </div>
@@ -141,6 +142,8 @@ export default function FocusPanel({ panelId, tab }: { panelId: string; tab?: st
           <Button variant="plain" className="of-header-btn" title="打开今日工作日志" onClick={openJournal}>
             <i className="ti ti-notebook" />
           </Button>
+          <PanelMenuButton panelId={panelId} />
+          <ClosePanelButton panelId={panelId} />
         </div>
       </div>
 

@@ -153,6 +153,15 @@ src/
 - `ensureActionBlock` 用一个 in-flight Promise map 串行化，避免启动补建和自检循环同时插入两个操作块；
 - 与浮层方案相比：位置由文档布局决定（不漂移、无需定位代码），但会改变文档结构（多一个子块），父块折叠时不可见，且操作块的插入/删除会进撤销栈。
 
+### 5.3e 自定义面板的原生控制（v0.7.3）
+
+- Orca 的自定义面板渲染器默认**不会**渲染核心面板自带的 `PanelDragHandle`（它没暴露给插件），所以之前的专注面板没有面板菜单/关闭入口；
+- 现在插件自带一份等价实现 `ui/PanelControls.tsx`：
+  - ⋮ 按钮：`draggable`，拖拽时写入 `orca/panel/<encodeURIComponent(repo).toLowerCase()>` 并设置 `orca._panelDragged`，由 Orca 的面板拖拽系统接管；点击打开菜单；
+  - 菜单项复用核心命令：`core.panel.toggleMaximize / toggleWideView / toggleLock / showRecents`、`orca.nav.addTo(...,"right")` 拆分、`orca.nav.close(panelId)` 关闭；快捷键取自 `orca.state.shortcuts`；
+  - 额外放了一个常显的 ✕ 关闭按钮（原生面板的关闭在菜单里，不够显眼）；
+- 面板打开失败时（`nav.addTo` 返回 null）退化为在当前面板 `nav.goTo` 打开该自定义视图。
+
 ### 5.4 退出自动暂停
 
 - 运行期每 5s 把 running 计时器的 `lastSeenAt` 写进 localStorage（只写本地，不写插件数据，避免 DB 抖动）；

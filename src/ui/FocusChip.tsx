@@ -19,7 +19,11 @@ export default function FocusChip() {
       title={first ? "专注中，点击打开计时面板" : "专注计时面板"}
       onClick={() => toggleFocusPanel()}
     >
-      <i className={`ti ${first ? "ti-clock-play" : "ti-clock"}`} />
+      <i
+        className={`ti ${
+          first ? "ti-clock-play" : snapshot.timers.length > 0 ? "ti-clock-pause" : "ti-layout-sidebar-right"
+        }`}
+      />
       {first != null && (
         <span className="of-chip-time">
           {running.length > 1 ? `${running.length} · ` : ""}

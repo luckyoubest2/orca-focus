@@ -2,8 +2,10 @@ export const FOCUS_CSS = `
 .of-panel {
   display: flex;
   flex-direction: column;
+  width: 100%;
   height: 100%;
   min-height: 0;
+  box-sizing: border-box;
   background: var(--orca-color-bg-1);
   color: var(--orca-color-text-1);
   font-family: var(--orca-fontfamily-ui);
@@ -15,7 +17,9 @@ export const FOCUS_CSS = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--orca-color-border);
   flex: 0 0 auto;
 }
@@ -40,7 +44,12 @@ export const FOCUS_CSS = `
   font-weight: var(--orca-fontweight-sm);
 }
 
-.of-panel-header-actions { display: flex; align-items: center; gap: 2px; }
+.of-panel-header-actions { display: flex; align-items: center; gap: 1px; }
+.of-panel-header-actions .of-header-btn { opacity: .72; }
+.of-panel-header-actions .of-header-btn:hover { opacity: 1; }
+.of-panel-menu-btn { cursor: grab !important; }
+.of-panel-menu-btn:active { cursor: grabbing !important; }
+.of-close-btn:hover { color: var(--orca-color-dangerous-5, var(--orca-color-text-1)) !important; }
 
 .of-panel-summary {
   flex: 0 0 auto;

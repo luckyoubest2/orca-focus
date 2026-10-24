@@ -23,7 +23,10 @@ export function openFocusPanel(args?: Record<string, any>): string | null {
       viewArgs: args ?? {},
       viewState: {},
     } as any)
-    return id ?? null
+    if (id != null) return id
+    // Fallback for layouts where adding a panel is not possible.
+    orca.nav.goTo(PANEL_VIEW as any, args ?? {})
+    return null
   } catch (e) {
     console.warn("[orca-focus] failed to open focus panel", e)
     return null
