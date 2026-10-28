@@ -6,15 +6,15 @@ import { ensureBlocks } from "../data/blocks"
 import { getSettings } from "../lib/settings"
 import { formatClock, formatElapsedClock, formatDurationHuman } from "../lib/util"
 import {
-  pauseAllRunning,
-  openEndDialog,
-  pauseTimer,
-  resumeTimer,
   elapsedMs,
+  lastOpenPause,
+  openEndDialog,
   openNoteDialog,
+  pausedMs,
   setNotice,
   useFocusStore,
 } from "../store"
+import { pauseAllFocus, requestPauseFocus, requestResumeFocus } from "../actions"
 import FocusHistoryView from "./HistoryView"
 import { ClosePanelButton, PanelMenuButton } from "./PanelControls"
 
@@ -35,6 +35,8 @@ function TimerCard({ timerId }: { timerId: string }) {
   const elapsed = elapsedMs(timer, snapshot.now)
   const running = timer.status === "running"
   const title = liveTitle(timer)
+  const openPause = lastOpenPause(timer)
+  const totalPaused = pausedMs(timer, snapshot.now)
 
   const jump = () => {
     orca.nav.goTo("block", { blockId: timer.blockId })
@@ -49,7 +51,12 @@ function TimerCard({ timerId }: { timerId: string }) {
             {title || "未命名块"}
           </div>
           <div className="of-card-meta">
-            {running ? `开始于 ${formatClock(timer.createdAt)}` : "已暂停"}
+            {running
+              ? `本段开始于 ${formatClock(timer.startedAt)}`
+              : openPause != null
+                ? `暂停于 ${formatClock(openPause.startMs)}`
+                : "已暂停"}
+            {totalPaused > 0 ? ` · 已暂停 ${formatDurationHuman(totalPaused)}` : ""}
             {timer.startNote ? ` · ${timer.startNote}` : ""}
           </div>
         </div>
@@ -60,7 +67,7 @@ function TimerCard({ timerId }: { timerId: string }) {
           variant="plain"
           className="of-icon-btn"
           title={running ? "暂停" : "继续"}
-          onClick={() => (running ? pauseTimer(timer.id) : resumeTimer(timer.id))}
+          onClick={() => void (running ? requestPauseFocus(timer.id) : requestResumeFocus(timer.id))}
         >
           <i className={`ti ${running ? "ti-player-pause" : "ti-player-play"}`} />
         </Button>
@@ -137,7 +144,12 @@ export default function FocusPanel({ panelId, tab }: { panelId: string; tab?: st
         </div>
         <div className="of-panel-header-actions">
           {running.length > 0 && (
-            <Button variant="plain" className="of-header-btn" title="暂停全部" onClick={() => pauseAllRunning()}>
+            <Button
+              variant="plain"
+              className="of-header-btn"
+              title="暂停全部"
+              onClick={() => void pauseAllFocus()}
+            >
               <i className="ti ti-player-pause" />
             </Button>
           )}

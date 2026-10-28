@@ -18,6 +18,8 @@ export interface FocusSettings {
   autoOpenPanel: boolean
   /** Pause all running timers when the app quits. */
   autoPauseOnExit: boolean
+  /** Ask for an optional note before pausing/resuming. */
+  pauseDialog: boolean
 }
 
 /** Empty by default: records are appended to the end of today's journal. */
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: FocusSettings = {
   logSectionNames: DEFAULT_LOG_SECTIONS,
   autoOpenPanel: false,
   autoPauseOnExit: true,
+  pauseDialog: true,
 }
 
 export function getSettings(): FocusSettings {
@@ -48,6 +51,7 @@ export function getSettings(): FocusSettings {
     ),
     autoOpenPanel: raw.autoOpenPanel === true,
     autoPauseOnExit: raw.autoPauseOnExit !== false,
+    pauseDialog: raw.pauseDialog !== false,
   }
 }
 
@@ -84,6 +88,13 @@ export async function registerSettings(pluginName: string): Promise<void> {
       label: "退出应用时自动暂停",
       description:
         "关闭 Orca Note 时自动暂停所有进行中的计时器，下次启动后显示为已暂停，可以在计时面板继续。关闭该项后，退出时会保留运行状态，下次启动继续计时（关闭期间的时间也会计入专注时长）。",
+      type: "boolean",
+      defaultValue: true,
+    },
+    pauseDialog: {
+      label: "暂停/恢复时弹出日志",
+      description:
+        "暂停和恢复时各弹出一个可选说明的小窗口：点确认才执行并写日志（空输入写默认记录），按 Esc 或取消则不执行、不写日志。关闭该项后，暂停/恢复直接执行并写默认的暂停/恢复记录，不弹窗。",
       type: "boolean",
       defaultValue: true,
     },

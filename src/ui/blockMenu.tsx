@@ -3,15 +3,13 @@ import type { DbId } from "../orca"
 import { getMirrorId } from "../data/blocks"
 import { formatElapsedClock } from "../lib/util"
 import { openFocusPanel } from "../lib/panels"
+import { elapsedMs, getTimerForBlock, openEndDialog, useFocusStore } from "../store"
 import {
-  elapsedMs,
-  getTimerForBlock,
-  openEndDialog,
-  pauseTimer,
-  resumeTimer,
-  useFocusStore,
-} from "../store"
-import { requestFocusNoteForBlock, requestStartFocus } from "../actions"
+  requestFocusNoteForBlock,
+  requestPauseFocus,
+  requestResumeFocus,
+  requestStartFocus,
+} from "../actions"
 
 const { MenuText } = orca.components as any
 
@@ -44,7 +42,7 @@ function FocusBlockMenu({ blockId, close }: { blockId: DbId; close: () => void }
         preIcon: "ti ti-player-pause",
         onClick: () => {
           close()
-          pauseTimer(timer.id)
+          void requestPauseFocus(timer.id)
         },
       }),
     )
@@ -56,7 +54,7 @@ function FocusBlockMenu({ blockId, close }: { blockId: DbId; close: () => void }
         preIcon: "ti ti-player-play",
         onClick: () => {
           close()
-          resumeTimer(timer.id)
+          void requestResumeFocus(timer.id)
         },
       }),
     )

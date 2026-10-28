@@ -399,6 +399,12 @@ export const HISTORY_CSS = `
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
 }
+.of-history-pause {
+  color: var(--orca-color-text-2);
+  font-size: var(--orca-fontsize-xs);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
 .of-history-duration {
   margin-left: auto;
   font-weight: var(--orca-fontweight-md);

@@ -2,14 +2,8 @@ import React from "react"
 import { formatElapsedClock } from "../lib/util"
 import { withActionBlockMutationAllowed } from "../lib/actionBlockGuard"
 import { runEditorCommand } from "../lib/editor"
-import {
-  elapsedMs,
-  openEndDialog,
-  openNoteDialog,
-  pauseTimer,
-  resumeTimer,
-  useFocusStore,
-} from "../store"
+import { elapsedMs, openEndDialog, openNoteDialog, useFocusStore } from "../store"
+import { requestPauseFocus, requestResumeFocus } from "../actions"
 
 const { BlockShell } = orca.components as any
 
@@ -77,7 +71,7 @@ function ActiveRow({
       <ActionButton
         icon={running ? "ti-player-pause" : "ti-player-play"}
         title={running ? "暂停专注" : "继续专注"}
-        onClick={() => (running ? pauseTimer(timer.id) : resumeTimer(timer.id))}
+        onClick={() => void (running ? requestPauseFocus(timer.id) : requestResumeFocus(timer.id))}
       />
       <ActionButton icon="ti-player-stop" title="结束专注" onClick={() => openEndDialog(timer.id)} />
     </span>

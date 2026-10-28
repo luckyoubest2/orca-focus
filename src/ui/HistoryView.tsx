@@ -46,7 +46,7 @@ function groupByDay(sessions: HistorySession[]): DayGroup[] {
       groups.push(group)
     }
     group.sessions.push(session)
-    group.totalMs += session.durationMs
+    if (!session.running && !session.paused) group.totalMs += session.effectiveMs
   }
   return groups
 }
@@ -57,18 +57,25 @@ function jumpTo(blockId: DbId | null): void {
 }
 
 function SessionCard({ session }: { session: HistorySession }) {
+  const openEnd = session.running || session.paused
   const range =
     session.startMs != null && session.endMs != null
-      ? `${formatClock(session.startMs)}–${formatClock(session.endMs)}`
+      ? `${formatClock(session.startMs)}–${openEnd ? "…" : formatClock(session.endMs)}`
       : session.startMs != null
         ? `${formatClock(session.startMs)}–…`
         : session.entries[0] != null
           ? formatClock(session.entries[0].createdMs)
           : ""
-  const duration = session.durationMs > 0 ? formatDurationHuman(session.durationMs) : ""
+  const duration = session.effectiveMs > 0 ? formatDurationHuman(session.effectiveMs) : ""
+  const durationTitle =
+    session.pauseMs > 0
+      ? `有效专注 ${formatDurationHuman(session.effectiveMs)} · 墙钟 ${formatDurationHuman(
+          session.durationMs,
+        )} · 暂停 ${formatDurationHuman(session.pauseMs)}`
+      : `专注 ${formatDurationHuman(session.effectiveMs)}`
 
   return (
-    <div className={`of-history-session ${session.running ? "of-history-session-running" : ""}`}>
+    <div className={`of-history-session ${session.running || session.paused ? "of-history-session-running" : ""}`}>
       <div className="of-history-session-head">
         <span
           className="of-history-target"
@@ -78,8 +85,19 @@ function SessionCard({ session }: { session: HistorySession }) {
           {session.targetTitle || "（未关联目标）"}
         </span>
         <span className="of-history-range">{range}</span>
-        {duration !== "" && <span className="of-history-duration">{duration}</span>}
+        {duration !== "" && (
+          <span className="of-history-duration" title={durationTitle}>
+            {duration}
+          </span>
+        )}
+        {session.pauseMs > 0 && (
+          <span className="of-history-pause" title={durationTitle}>
+            暂停 {session.pauseCount > 0 ? `${session.pauseCount} 次 · ` : ""}
+            {formatDurationHuman(session.pauseMs)}
+          </span>
+        )}
         {session.running && <span className="of-history-badge">进行中</span>}
+        {session.paused && <span className="of-history-badge">暂停中</span>}
         {session.legacy && <span className="of-history-badge of-history-badge-legacy">旧记录</span>}
       </div>
       {session.entries.length > 0 && (
@@ -142,13 +160,13 @@ export default function FocusHistoryView() {
     <div className="of-history">
       <div className="of-history-stats">
         <div className="of-history-stat">
-          <span className="of-history-stat-label">今日累计</span>
+          <span className="of-history-stat-label">今日专注</span>
           <span className="of-history-stat-value">
             {history != null ? formatDurationHuman(history.todayMs) : "—"}
           </span>
         </div>
         <div className="of-history-stat">
-          <span className="of-history-stat-label">全部累计</span>
+          <span className="of-history-stat-label">全部专注</span>
           <span className="of-history-stat-value">
             {history != null ? formatDurationHuman(history.totalMs) : "—"}
           </span>
@@ -194,7 +212,9 @@ export default function FocusHistoryView() {
           </div>
         ))}
       </div>
-      <div className="of-panel-footer">记录汇总自笔记里的 #{getSettings().tagName} 标签（含中间备注），不额外存一份账。</div>
+      <div className="of-panel-footer">
+        记录汇总自笔记里的 #{getSettings().tagName} 标签（含暂停/恢复与中间备注）；时长只算有开始+结束的连续专注段，暂停不计入。
+      </div>
     </div>
   )
 }

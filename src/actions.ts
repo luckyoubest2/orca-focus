@@ -1,7 +1,14 @@
 import type { DbId } from "./orca"
 import { blockExists, blockTitle, ensureBlock, getMirrorId } from "./data/blocks"
 import { ensureActionBlock, removeActionBlock } from "./data/actionBlock"
-import { deleteEntry, writeEndEntry, writeNoteEntry, writeStartEntry } from "./data/log"
+import {
+  deleteEntry,
+  writeEndEntry,
+  writeNoteEntry,
+  writePauseEntry,
+  writeResumeEntry,
+  writeStartEntry,
+} from "./data/log"
 import { openFocusPanel } from "./lib/panels"
 import { formatDurationHuman } from "./lib/util"
 import { getSettings } from "./lib/settings"
@@ -9,24 +16,31 @@ import {
   bumpHistoryVersion,
   clearEndUndo,
   closeDialog,
+  closeOpenPause,
   createTimer,
+  discardTimer,
   elapsedMs,
   ensureSessionId,
+  findPause,
   getTimer,
   getTimerForBlock,
   openEndDialog,
   openNoteDialog,
+  openPauseDialog,
+  openResumeDialog,
   openStartDialog,
+  pauseAllRunning,
   pauseTimer,
   peekEndUndo,
   pushEndUndo,
   removeTimer,
   restoreTimer,
-  discardTimer,
   resumeTimer,
+  setPauseBlockId,
+  setPauseNote,
   store,
 } from "./store"
-import type { EndUndoRecord, FocusTimer } from "./types"
+import type { EndUndoRecord, FocusTimer, PauseSegment } from "./types"
 
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -43,8 +57,7 @@ export async function requestStartFocus(blockId: DbId): Promise<void> {
   const existing = getTimerForBlock(realId)
   if (existing) {
     if (existing.status === "paused") {
-      resumeTimer(existing.id)
-      orca.notify("info", `继续专注：${existing.title}`)
+      requestResumeFocus(existing.id)
     } else {
       orca.notify("info", `这个块已经在专注中：${existing.title}`)
     }
@@ -127,6 +140,165 @@ export async function confirmFocusNote(note: string): Promise<void> {
   }
 }
 
+/** De-duplicate concurrent 暂停 entry writes for the same pause segment. */
+const pauseLogWrites = new Map<string, Promise<void>>()
+
+/**
+ * Make sure the journal has the 暂停 entry for a paused segment. The entry is
+ * normally written when the pause dialog is answered, but a pause triggered by
+ * an app quit or a failed write is flushed on the next resume/end.
+ */
+function writePauseLog(timer: FocusTimer, segment: PauseSegment): Promise<void> {
+  if (segment.blockId != null) return Promise.resolve()
+  const key = `${timer.id}:${segment.startMs}`
+  const pending = pauseLogWrites.get(key)
+  if (pending != null) return pending
+  const run = (async () => {
+    ensureSessionId(timer)
+    const blockId = await writePauseEntry(timer, segment)
+    setPauseBlockId(timer.id, segment.startMs, blockId)
+    bumpHistoryVersion()
+  })().finally(() => {
+    pauseLogWrites.delete(key)
+  })
+  pauseLogWrites.set(key, run)
+  return run
+}
+
+async function flushPendingPauseLogs(timer: FocusTimer): Promise<void> {
+  for (const segment of [...timer.pauses]) {
+    if (segment.blockId != null) continue
+    try {
+      await writePauseLog(timer, segment)
+    } catch (error) {
+      console.warn("[orca-focus] pause entry write failed", error)
+    }
+  }
+}
+
+/** True when another modal dialog already owns the shared dialog slot. */
+function dialogBusy(): boolean {
+  return store.dialog != null
+}
+
+/**
+ * Pause a running timer. The dialog only collects an optional reason: the timer
+ * pauses when the dialog is confirmed, and cancelling leaves it running (same
+ * confirm/cancel semantics as the start and end dialogs).
+ */
+export async function requestPauseFocus(timerId: string): Promise<boolean> {
+  const timer = getTimer(timerId)
+  if (timer == null || timer.status !== "running") return false
+
+  if (getSettings().pauseDialog) {
+    if (dialogBusy()) {
+      orca.notify("info", "请先关闭当前弹窗，再暂停专注。", { title: "专注" })
+      return false
+    }
+    openPauseDialog(timerId)
+    return true
+  }
+
+  const segment = pauseTimer(timerId)
+  if (segment == null) return false
+  try {
+    await writePauseLog(timer, segment)
+    orca.notify("info", `已暂停：${timer.title}`, { title: "专注" })
+  } catch (error) {
+    console.warn("[orca-focus] pause entry write failed", error)
+    notifyError(`暂停日志写入失败：${errorText(error)}（计时已暂停，恢复或结束时会再试）`)
+  }
+  return true
+}
+
+/** Pause dialog confirmed: pause now and write the 暂停 entry. */
+export async function confirmPauseFocus(note: string): Promise<void> {
+  const dialog = store.dialog
+  if (dialog?.kind !== "pause") return
+  closeDialog()
+  const timer = getTimer(dialog.timerId)
+  if (timer == null || timer.status !== "running") return
+  const segment = pauseTimer(timer.id)
+  if (segment == null) return
+  setPauseNote(timer.id, segment.startMs, note)
+  // Re-read through the store: pauseTimer() returns the raw segment, but the
+  // note was written to Valtio's proxied copy, so the raw object still has "".
+  const stored = findPause(timer, segment.startMs)
+  if (stored == null) return
+  try {
+    await writePauseLog(timer, stored)
+  } catch (error) {
+    console.warn("[orca-focus] pause entry write failed", error)
+    notifyError(`暂停日志写入失败：${errorText(error)}（计时已暂停，恢复或结束时会再试）`)
+  }
+}
+
+/**
+ * Resume a paused timer. Like the other dialogs the action happens on confirm;
+ * cancelling keeps the timer paused and writes nothing.
+ */
+export function requestResumeFocus(timerId: string): boolean {
+  const timer = getTimer(timerId)
+  if (timer == null || timer.status === "running") return false
+
+  if (getSettings().pauseDialog) {
+    if (dialogBusy()) {
+      orca.notify("info", "请先关闭当前弹窗，再继续专注。", { title: "专注" })
+      return false
+    }
+    openResumeDialog(timerId)
+    return true
+  }
+
+  void resumeNow(timerId, "")
+  return true
+}
+
+/** Resume dialog confirmed: resume now and write the 恢复 entry. */
+export async function confirmResumeFocus(note: string): Promise<void> {
+  const dialog = store.dialog
+  if (dialog?.kind !== "resume") return
+  closeDialog()
+  await resumeNow(dialog.timerId, note)
+}
+
+async function resumeNow(timerId: string, note: string): Promise<void> {
+  const timer = getTimer(timerId)
+  if (timer == null || timer.status === "running") return
+  const resumeMs = Date.now()
+  const segment = resumeTimer(timerId)
+  try {
+    if (segment != null) await flushPendingPauseLogs(timer)
+    ensureSessionId(timer)
+    await writeResumeEntry(timer, resumeMs, note)
+    bumpHistoryVersion()
+  } catch (error) {
+    console.warn("[orca-focus] resume entry write failed", error)
+    notifyError(`恢复记录写入失败：${errorText(error)}（计时已继续）`)
+  }
+}
+
+/** Pause every running timer without per-timer dialogs; logs default entries. */
+export async function pauseAllFocus(): Promise<number> {
+  if (store.dialog != null) closeDialog()
+  const results = pauseAllRunning()
+  if (results.length === 0) return 0
+  for (const result of results) {
+    const timer = getTimer(result.timerId)
+    if (timer == null) continue
+    const segment = findPause(timer, result.pauseStartMs)
+    if (segment == null) continue
+    try {
+      await writePauseLog(timer, segment)
+    } catch (error) {
+      console.warn("[orca-focus] pause entry write failed", error)
+    }
+  }
+  bumpHistoryVersion()
+  orca.notify("info", `已暂停 ${results.length} 个专注计时器`, { title: "专注" })
+  return results.length
+}
+
 /** Toggle pause/resume for the block that currently owns a timer. */
 export async function toggleFocusForBlock(blockId: DbId): Promise<void> {
   const realId = getMirrorId(blockId)
@@ -136,9 +308,9 @@ export async function toggleFocusForBlock(blockId: DbId): Promise<void> {
     return
   }
   if (timer.status === "running") {
-    pauseTimer(timer.id)
+    await requestPauseFocus(timer.id)
   } else {
-    resumeTimer(timer.id)
+    requestResumeFocus(timer.id)
   }
 }
 
@@ -176,10 +348,17 @@ export async function confirmEndFocus(summary: string): Promise<void> {
   const endMs = Date.now()
   const wasRunning = timer.status === "running"
   const elapsedAtEnd = elapsedMs(timer, endMs)
-  const snapshot = snapshotTimer(timer)
+  // The end entry opens at the current run segment start. When the timer is
+  // paused there is no open segment: use a zero-length entry (start = end) so
+  // the pause time is not counted as focus, while the session still gets an end.
+  const segmentStartMs = wasRunning && timer.startedAt > 0 ? timer.startedAt : endMs
 
   try {
-    const result = await writeEndEntry(timer, endMs, summary)
+    // Flush a pending 暂停 entry before snapshotting so undo keeps its block id.
+    if (!wasRunning) await flushPendingPauseLogs(timer)
+    const snapshot = snapshotTimer(timer)
+    if (!wasRunning) closeOpenPause(timer.id, endMs)
+    const result = await writeEndEntry(timer, endMs, summary, segmentStartMs)
     try {
       await removeActionBlock(timer)
     } catch (e) {
@@ -203,7 +382,13 @@ export async function confirmEndFocus(summary: string): Promise<void> {
     })
   } catch (error) {
     console.warn("[orca-focus] end entry write failed", error)
-    if (timer.status === "running") pauseTimer(timer.id)
+    if (timer.status === "running") {
+      pauseTimer(timer.id)
+    } else {
+      // Reopen the pause we closed for the failed end write.
+      const lastPause = timer.pauses[timer.pauses.length - 1]
+      if (lastPause != null && lastPause.endMs != null) lastPause.endMs = null
+    }
     notifyError(`写专注记录失败：${errorText(error)}（计时已暂停，可再试一次结束）`)
   }
 }

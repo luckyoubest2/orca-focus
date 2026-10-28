@@ -5,7 +5,7 @@ import {
   getPluginKey,
   localStorageKey,
 } from "./config"
-import type { DialogState, EndUndoRecord, FocusTimer, PersistedState } from "./types"
+import type { DialogState, EndUndoRecord, FocusTimer, PauseSegment, PersistedState } from "./types"
 import { getSettings } from "./lib/settings"
 import { makeSessionId, uid } from "./lib/util"
 
@@ -46,6 +46,36 @@ export function elapsedMs(timer: FocusTimer, now: number = Date.now()): number {
     return base + Math.max(0, now - timer.startedAt)
   }
   return base
+}
+
+/** Pause currently in progress (only one can be open at a time). */
+export function lastOpenPause(timer: FocusTimer): PauseSegment | null {
+  for (let index = timer.pauses.length - 1; index >= 0; index -= 1) {
+    if (timer.pauses[index].endMs == null) return timer.pauses[index]
+  }
+  return null
+}
+
+/** Total pause time of a session; an open pause counts up to `now`. */
+export function pausedMs(timer: FocusTimer, now: number = Date.now()): number {
+  let total = 0
+  for (const pause of timer.pauses) {
+    const end = pause.endMs ?? (timer.status === "paused" ? now : pause.startMs)
+    if (end > pause.startMs) total += end - pause.startMs
+  }
+  return total
+}
+
+export function findPause(timer: FocusTimer, pauseStartMs: number): PauseSegment | null {
+  return timer.pauses.find((pause) => pause.startMs === pauseStartMs) ?? null
+}
+
+/** Create the open pause segment for the run that is being paused right now. */
+function appendPauseSegment(timer: FocusTimer, atMs: number): PauseSegment {
+  const runStartMs = timer.startedAt > 0 && timer.startedAt <= atMs ? timer.startedAt : atMs
+  const segment: PauseSegment = { startMs: atMs, endMs: null, runStartMs, note: "", blockId: null }
+  timer.pauses.push(segment)
+  return segment
 }
 
 function serialize(): PersistedState {
@@ -95,6 +125,34 @@ function parsePersisted(raw: string): PersistedState | null {
   }
 }
 
+function normalizePauses(raw: any): PauseSegment[] {
+  if (!Array.isArray(raw)) return []
+  const pauses: PauseSegment[] = []
+  for (const item of raw) {
+    if (item == null || typeof item !== "object") continue
+    const startMs = Number(item.startMs)
+    if (!Number.isFinite(startMs) || startMs <= 0) continue
+    const runStartMs = Number(item.runStartMs)
+    const endMs = item.endMs == null ? null : Number(item.endMs)
+    pauses.push({
+      startMs,
+      endMs: endMs != null && Number.isFinite(endMs) && endMs >= startMs ? endMs : null,
+      runStartMs:
+        Number.isFinite(runStartMs) && runStartMs > 0 && runStartMs <= startMs ? runStartMs : startMs,
+      note: typeof item.note === "string" ? item.note : "",
+      blockId: typeof item.blockId === "number" ? item.blockId : null,
+    })
+  }
+  // Only the newest pause may be open; close older ones at the next pause.
+  for (let index = 0; index < pauses.length - 1; index += 1) {
+    const pause = pauses[index]
+    if (pause.endMs != null) continue
+    const next = pauses[index + 1]
+    pause.endMs = Math.max(pause.startMs, next.startMs)
+  }
+  return pauses
+}
+
 function normalizeTimer(raw: any): FocusTimer | null {
   if (raw == null || typeof raw !== "object") return null
   if (typeof raw.id !== "string" || typeof raw.blockId !== "number") return null
@@ -118,6 +176,7 @@ function normalizeTimer(raw: any): FocusTimer | null {
     actionBlockId: typeof raw.actionBlockId === "number" ? raw.actionBlockId : null,
     lastSeenAt: Number(raw.lastSeenAt) || Date.now(),
     pausedByQuit: raw.pausedByQuit === true,
+    pauses: normalizePauses(raw.pauses),
   }
 }
 
@@ -158,6 +217,7 @@ export async function initStore(): Promise<InitResult> {
         // charged to the session.
         const lastSeen = Math.max(timer.lastSeenAt || 0, timer.startedAt || 0)
         timer.accumulatedMs = timer.accumulatedMs + Math.max(0, lastSeen - timer.startedAt)
+        appendPauseSegment(timer, lastSeen)
         timer.startedAt = 0
         timer.status = "paused"
         timer.lastSeenAt = Date.now()
@@ -168,6 +228,18 @@ export async function initStore(): Promise<InitResult> {
     } else if (timer.pausedByQuit) {
       quitPausedCount += 1
       timer.pausedByQuit = false
+    }
+    // Timers persisted by older versions have no pause history: synthesize one
+    // open pause so resuming/ending still produces a complete pause log.
+    if (timer.status === "paused" && timer.pauses.length === 0) {
+      const pausedAt = Math.max(timer.lastSeenAt || 0, timer.createdAt)
+      timer.pauses.push({
+        startMs: pausedAt,
+        endMs: null,
+        runStartMs: Math.min(timer.createdAt, pausedAt),
+        note: "",
+        blockId: null,
+      })
     }
     timers.push(timer)
   }
@@ -213,6 +285,7 @@ function attachQuitHandler(): void {
       for (const timer of store.timers) {
         if (timer.status !== "running") continue
         timer.accumulatedMs = elapsedMs(timer, now)
+        appendPauseSegment(timer, now)
         timer.startedAt = 0
         timer.status = "paused"
         timer.lastSeenAt = now
@@ -302,6 +375,7 @@ export function createTimer(blockId: number, title: string, startNote: string): 
     startNote: startNote.trim(),
     actionBlockId: null,
     lastSeenAt: now,
+    pauses: [],
   }
   store.timers.push(timer)
   store.now = now
@@ -319,48 +393,90 @@ export function getTimerForBlock(blockId: number): FocusTimer | null {
   return matches.find((timer) => timer.status === "running") ?? matches[0]
 }
 
-export function pauseTimer(id: string): boolean {
+/** Pause a running timer; returns the new (open) pause segment. */
+export function pauseTimer(id: string): PauseSegment | null {
   const timer = getTimer(id)
-  if (!timer || timer.status !== "running") return false
+  if (!timer || timer.status !== "running") return null
   const now = Date.now()
   timer.accumulatedMs = elapsedMs(timer, now)
+  const segment = appendPauseSegment(timer, now)
   timer.startedAt = 0
   timer.status = "paused"
   timer.lastSeenAt = now
   timer.pausedByQuit = false
   store.now = now
   saveState()
-  return true
+  return segment
 }
 
-export function resumeTimer(id: string): boolean {
+/** Resume a paused timer and close its open pause segment. */
+export function resumeTimer(id: string): PauseSegment | null {
   const timer = getTimer(id)
-  if (!timer || timer.status === "running") return false
+  if (!timer || timer.status === "running") return null
+  const now = Date.now()
+  const segment = lastOpenPause(timer)
+  if (segment != null) segment.endMs = now
   timer.status = "running"
-  timer.startedAt = Date.now()
-  timer.lastSeenAt = Date.now()
+  timer.startedAt = now
+  timer.lastSeenAt = now
   timer.pausedByQuit = false
-  store.now = Date.now()
+  store.now = now
   saveState()
-  return true
+  return segment
 }
 
-export function pauseAllRunning(): number {
-  let count = 0
+/** Close an open pause without resuming (used when a paused timer is ended). */
+export function closeOpenPause(id: string, atMs: number = Date.now()): PauseSegment | null {
+  const timer = getTimer(id)
+  if (timer == null) return null
+  const segment = lastOpenPause(timer)
+  if (segment == null) return null
+  segment.endMs = Math.max(atMs, segment.startMs)
+  saveState()
+  return segment
+}
+
+export function setPauseNote(timerId: string, pauseStartMs: number, note: string): void {
+  const timer = getTimer(timerId)
+  if (timer == null) return
+  const segment = findPause(timer, pauseStartMs)
+  if (segment == null) return
+  segment.note = note.trim()
+  saveState()
+}
+
+export function setPauseBlockId(timerId: string, pauseStartMs: number, blockId: number | null): void {
+  const timer = getTimer(timerId)
+  if (timer == null) return
+  const segment = findPause(timer, pauseStartMs)
+  if (segment == null) return
+  segment.blockId = blockId
+  saveState()
+}
+
+export interface PauseAllResult {
+  timerId: string
+  pauseStartMs: number
+}
+
+/** Pause every running timer; returns the newly opened pause segments. */
+export function pauseAllRunning(): PauseAllResult[] {
+  const results: PauseAllResult[] = []
   const now = Date.now()
   for (const timer of store.timers) {
     if (timer.status !== "running") continue
     timer.accumulatedMs = elapsedMs(timer, now)
+    const segment = appendPauseSegment(timer, now)
     timer.startedAt = 0
     timer.status = "paused"
     timer.lastSeenAt = now
-    count += 1
+    results.push({ timerId: timer.id, pauseStartMs: segment.startMs })
   }
-  if (count > 0) {
+  if (results.length > 0) {
     store.now = now
     saveState()
   }
-  return count
+  return results
 }
 
 /** Drop a timer without writing a journal entry. */
@@ -384,6 +500,7 @@ export function removeTimer(id: string): FocusTimer | null {
 /** Put a timer back (used by undo). */
 export function restoreTimer(timer: FocusTimer): void {
   if (store.timers.some((existing) => existing.id === timer.id)) return
+  if (!Array.isArray(timer.pauses)) timer.pauses = []
   store.timers.push(timer)
   store.now = Date.now()
   saveState()
@@ -421,6 +538,14 @@ export function openEndDialog(timerId: string): void {
 
 export function openNoteDialog(timerId: string, title: string): void {
   store.dialog = { kind: "note", timerId, title }
+}
+
+export function openPauseDialog(timerId: string): void {
+  store.dialog = { kind: "pause", timerId }
+}
+
+export function openResumeDialog(timerId: string): void {
+  store.dialog = { kind: "resume", timerId }
 }
 
 export function closeDialog(): void {

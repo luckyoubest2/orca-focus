@@ -22,7 +22,15 @@ export interface HistorySession {
   endMs: number | null
   /** Wall-clock duration: last 结束时间 - first 开始时间 (same session id). */
   durationMs: number
+  /** Sum of every closed segment (开始时间 → 结束时间); pauses are the gaps. */
+  effectiveMs: number
+  /** Wall-clock time minus effective time (pause time). */
+  pauseMs: number
+  /** Number of 暂停 entries (display only). */
+  pauseCount: number
   running: boolean
+  /** Timer exists but is paused (not ended), so it is not counted as complete. */
+  paused: boolean
 }
 
 export interface FocusHistory {
@@ -179,6 +187,9 @@ export async function loadFocusHistory(): Promise<FocusHistory> {
   const runningSessionIds = new Set(
     store.timers.filter((timer) => timer.status === "running").map((timer) => timer.sessionId),
   )
+  const pausedSessionIds = new Set(
+    store.timers.filter((timer) => timer.status === "paused").map((timer) => timer.sessionId),
+  )
   const sessionsById = new Map<string, HistorySession>()
 
   for (const block of list) {
@@ -220,13 +231,25 @@ export async function loadFocusHistory(): Promise<FocusHistory> {
         startMs: null,
         endMs: null,
         durationMs: 0,
+        effectiveMs: 0,
+        pauseMs: 0,
+        pauseCount: 0,
         running: false,
+        paused: false,
       }
       sessionsById.set(key, session)
     }
     if (session.targetBlockId == null && targetBlockId != null) session.targetBlockId = targetBlockId
     if (startMs != null && (session.startMs == null || startMs < session.startMs)) session.startMs = startMs
     if (endMs != null && (session.endMs == null || endMs > session.endMs)) session.endMs = endMs
+    // Every entry carrying both times is one continuous focus segment. Pauses
+    // are simply the gaps between those segments, so summing them is enough.
+    if (startMs != null && endMs != null && endMs > startMs) {
+      session.effectiveMs += endMs - startMs
+    }
+    if (startMs != null && endMs != null && /^\d{1,2}:\d{2}\s*暂停/.test(entry.text)) {
+      session.pauseCount += 1
+    }
     session.entries.push(entry)
   }
 
@@ -241,8 +264,13 @@ export async function loadFocusHistory(): Promise<FocusHistory> {
       )
     }
     session.running = runningSessionIds.has(session.id)
+    session.paused = !session.running && pausedSessionIds.has(session.id)
     session.durationMs =
       session.startMs != null && session.endMs != null ? Math.max(0, session.endMs - session.startMs) : 0
+    if (session.durationMs > 0) {
+      session.effectiveMs = Math.min(session.effectiveMs, session.durationMs)
+      session.pauseMs = Math.max(0, session.durationMs - session.effectiveMs)
+    }
     session.targetTitle = session.targetBlockId != null ? blockTitle(orca.state.blocks[session.targetBlockId]) : ""
     if (!session.targetTitle) {
       const firstWithText = session.entries.find((entry) => entry.text.length > 0)
@@ -257,10 +285,11 @@ export async function loadFocusHistory(): Promise<FocusHistory> {
   let todayMs = 0
   let todayCount = 0
   for (const session of sessions) {
-    if (session.durationMs > 0) {
-      totalMs += session.durationMs
+    const completed = !session.running && !session.paused
+    if (completed && session.effectiveMs > 0) {
+      totalMs += session.effectiveMs
       const anchor = session.startMs ?? session.entries[0]?.createdMs
-      if (anchor != null && isToday(anchor)) todayMs += session.durationMs
+      if (anchor != null && isToday(anchor)) todayMs += session.effectiveMs
     }
     const anchor = session.startMs ?? session.entries[0]?.createdMs
     if (anchor != null && isToday(anchor)) todayCount += 1

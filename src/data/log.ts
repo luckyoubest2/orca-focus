@@ -13,7 +13,7 @@ import type { EditorApi } from "../lib/editor"
 import { runEditorCommand, runEditorGroup } from "../lib/editor"
 import { getSettings } from "../lib/settings"
 import { formatClock } from "../lib/util"
-import type { FocusTimer } from "../types"
+import type { FocusTimer, PauseSegment } from "../types"
 import { buildTagData, ensureFocusTag } from "./tag"
 
 interface CachedTarget {
@@ -234,15 +234,90 @@ export interface EndEntryResult {
 }
 
 /**
+ * "Pause entry": records the run segment that this pause closed.
+ * - note filled:   `HH:mm {note}`
+ * - note empty:    `HH:mm 暂停专注：` + inline target reference
+ * Tagged with 开始时间 = the run segment start and 结束时间 = the pause moment
+ * (same 专注ID), so closed segments can be summed as effective focus time.
+ */
+export function writePauseEntry(timer: FocusTimer, segment: PauseSegment): Promise<DbId> {
+  return enqueue(async () => {
+    const tag = await ensureFocusTag()
+    const pauseMs = segment.startMs
+    const target = await findOrCreateLogTarget(new Date(pauseMs))
+    const alive = (await blockExists(timer.blockId)) ? timer.blockId : null
+    const note = segment.note.trim()
+    const inline = note.length === 0 && alive != null
+    const suffix = alive == null ? `（${timer.title}）` : ""
+    const text = inline
+      ? `${formatClock(pauseMs)} 暂停专注：`
+      : note.length > 0
+        ? `${formatClock(pauseMs)} ${note}${suffix}`
+        : `${formatClock(pauseMs)} 暂停专注${suffix}`
+    const runStartMs =
+      segment.runStartMs > 0 && segment.runStartMs <= pauseMs ? segment.runStartMs : timer.createdAt
+    return insertEntry({
+      target,
+      text,
+      sourceBlockId: alive,
+      tagName: tag.name,
+      inlineRef: inline,
+      tagDataFactory: (targetRefId) =>
+        buildTagData({ startMs: runStartMs, endMs: pauseMs, targetRefId, sessionId: timer.sessionId }),
+    })
+  })
+}
+
+/**
+ * "Resume entry": opens the next run segment.
+ * - note filled: `HH:mm {note}`
+ * - note empty:  `HH:mm 恢复专注：` + inline target reference
+ * Tagged with 开始时间 = the resume moment and no 结束时间; the next pause/end
+ * entry closes the segment.
+ */
+export function writeResumeEntry(
+  timer: FocusTimer,
+  resumeMs: number,
+  note: string = "",
+): Promise<DbId> {
+  return enqueue(async () => {
+    const tag = await ensureFocusTag()
+    const target = await findOrCreateLogTarget(new Date(resumeMs))
+    const alive = (await blockExists(timer.blockId)) ? timer.blockId : null
+    const reason = note.trim()
+    const inline = reason.length === 0 && alive != null
+    const suffix = alive == null ? `（${timer.title}）` : ""
+    const text = inline
+      ? `${formatClock(resumeMs)} 恢复专注：`
+      : reason.length > 0
+        ? `${formatClock(resumeMs)} ${reason}${suffix}`
+        : `${formatClock(resumeMs)} 恢复专注${suffix}`
+    return insertEntry({
+      target,
+      text,
+      sourceBlockId: alive,
+      tagName: tag.name,
+      inlineRef: inline,
+      tagDataFactory: (targetRefId) =>
+        buildTagData({ startMs: resumeMs, targetRefId, sessionId: timer.sessionId }),
+    })
+  })
+}
+
+/**
  * "End entry":
  * - summary filled: `HH:mm {summary}`
  * - summary empty:  `HH:mm 结束专注：` + inline reference to the focus target
- * Tagged with the focus tag (开始时间 + 结束时间 + 目标 + 专注ID).
+ * Tagged with 开始时间 = the current run segment start (not the session start),
+ * 结束时间 = end moment, 目标 and 专注ID. Summing every entry that has both
+ * 开始时间 and 结束时间 therefore yields the effective focus time; pauses are
+ * the gaps between consecutive closed segments.
  */
 export function writeEndEntry(
   timer: FocusTimer,
   endMs: number,
   summary: string,
+  segmentStartMs: number,
 ): Promise<EndEntryResult> {
   return enqueue(async () => {
     const tag = await ensureFocusTag()
@@ -264,7 +339,12 @@ export function writeEndEntry(
       tagName: tag.name,
       inlineRef: inline,
       tagDataFactory: (targetRefId) =>
-        buildTagData({ startMs: timer.createdAt, endMs, targetRefId, sessionId: timer.sessionId }),
+        buildTagData({
+          startMs: Math.min(segmentStartMs, endMs),
+          endMs,
+          targetRefId,
+          sessionId: timer.sessionId,
+        }),
     })
     return { blockId }
   })
